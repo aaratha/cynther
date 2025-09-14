@@ -1,6 +1,8 @@
 #define CYNTHER_IMPLEMENTATION
 #include "cynther.h"
 
+// Example usage:
+//
 // int main() {
 //   audio_init();
 //
@@ -16,7 +18,4 @@
 //     sleep(1); // keep running
 // }
 
-int main() {
-  struct HelloWorld hw = {"Hello, World!"};
-  wrap_print(&hw);
-}
+int main(int argc, char **argv) { cynther_audio_main(argc, argv); }

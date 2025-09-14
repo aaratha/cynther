@@ -4,8 +4,12 @@
 
 #include "../../external/miniaudio/miniaudio.h"
 
-struct HelloWorld {
-  const char *message;
-};
+#define DEVICE_FORMAT ma_format_f32
+#define DEVICE_CHANNELS 2
+#define DEVICE_SAMPLE_RATE 48000
 
-void print_hello_world(struct HelloWorld *hw);
+// struct HelloWorld {
+//   const char *message;
+// };
+
+// void print_hello_world(struct HelloWorld *hw);

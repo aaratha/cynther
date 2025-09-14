@@ -6,6 +6,8 @@
 #include "stdio.h"
 #endif
 
-void wrap_print(struct HelloWorld *hw) {
-  print_hello_world(&(struct HelloWorld){"Hello, World!"});
-}
+// void wrap_print(struct HelloWorld *hw) {
+//   print_hello_world(&(struct HelloWorld){"Hello, World!"});
+// }
+
+void cynther_audio_main(int argc, char **argv) { audio_main(argc, argv); }
