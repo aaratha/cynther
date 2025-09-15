@@ -50,6 +50,7 @@ typedef struct {
   ma_device device;
 
   int activeVoices;
+  Voice voices[MAX_VOICES];
 
   bool audioInitialized;
 } AudioManager;
@@ -71,3 +72,8 @@ void dsp_biquad_init_lowpass(Biquad *bq, float cutoff, float Q, float sr);
 float dsp_biquad_process(Biquad *bq, float in);
 
 float dsp_mix(float *inputs, int count);
+
+// Public Cynther API
+void cyn_init();
+void cyn_play(int argc, char **argv);
+void cyn_add_voice(Oscillator *osc, Oscillator *lfo);

@@ -10,9 +10,28 @@
 //   print_hello_world(&(struct HelloWorld){"Hello, World!"});
 // }
 
-int cynther_audio_main(int argc, char **argv) {
-  audio_init();
+void cyn_init() { audio_init(); }
 
+void cyn_add_voice(Oscillator *osc, Oscillator *lfo) {
+  if (gAM.activeVoices >= MAX_VOICES) {
+    printf("Max voices reached!\n");
+    return;
+  }
+
+  // Find the first inactive voice slot
+  for (int i = 0; i < MAX_VOICES; i++) {
+    if (!gAM.voices[i].active) {
+      gAM.voices[i].osc = *osc;
+      gAM.voices[i].lfo = *lfo;
+      gAM.voices[i].active = true;
+      gAM.activeVoices++;
+      printf("Added voice %d, total active voices: %d\n", i, gAM.activeVoices);
+      return;
+    }
+  }
+}
+
+void cyn_play(int argc, char **argv) {
   printf("Audio started. Press ENTER to exit.\n");
 
   printf("Press Enter to quit...\n");
@@ -22,5 +41,4 @@ int cynther_audio_main(int argc, char **argv) {
 
   (void)argc;
   (void)argv;
-  return 0;
 }

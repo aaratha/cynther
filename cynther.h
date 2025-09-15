@@ -95701,6 +95701,7 @@ typedef struct {
   ma_device device;
 
   int activeVoices;
+  Voice voices[MAX_VOICES];
 
   bool audioInitialized;
 } AudioManager;
@@ -95723,6 +95724,11 @@ float dsp_biquad_process(Biquad *bq, float in);
 
 float dsp_mix(float *inputs, int count);
 
+// Public Cynther API
+void cyn_init();
+void cyn_play(int argc, char **argv);
+void cyn_add_voice(Oscillator *osc, Oscillator *lfo);
+
 
 #ifdef CYNTHER_IMPLEMENTATION
 /* === cynther sources === */
@@ -95739,17 +95745,15 @@ Oscillator lfo1 = {.freq = 2.0f, .amp = 100.0f, .phase = 0.0f, .type = SINE};
 Oscillator osc2 = {.freq = 440.0f, .amp = 0.05f, .phase = 0.0f, .type = SAW};
 Oscillator lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
 
-Voice voices[8];
-
 AudioManager gAM = {.audioInitialized = false};
 
 void audio_init_voices() {
   for (int i = 0; i < MAX_VOICES; i++) {
-    voices[i].active = 0; // mark all voices inactive
-    voices[i].osc.freq = 0.0f;
-    voices[i].osc.phase = 0.0f;
-    voices[i].osc.amp = 0.0f;
-    voices[i].osc.type = SINE;
+    gAM.voices[i].active = 0; // mark all voices inactive
+    gAM.voices[i].osc.freq = 0.0f;
+    gAM.voices[i].osc.phase = 0.0f;
+    gAM.voices[i].osc.amp = 0.0f;
+    gAM.voices[i].osc.type = SINE;
   }
 }
 
@@ -95761,22 +95765,12 @@ void audio_init() {
 
   gAM.activeVoices = 0;
 
-  Voice voice1 = {.osc = osc1, .lfo = lfo1, .active = true};
-  Voice voice2 = {.osc = osc2, .lfo = lfo2, .active = true};
-  voices[0] = voice1;
-  voices[1] = voice2;
-
-  for (int i = 0; i < MAX_VOICES; i++) {
-    if (voices[i].active == true)
-      gAM.activeVoices++;
-  }
-
   gAM.deviceConfig = ma_device_config_init(ma_device_type_playback);
   gAM.deviceConfig.playback.format = DEVICE_FORMAT;
   gAM.deviceConfig.playback.channels = DEVICE_CHANNELS;
   gAM.deviceConfig.sampleRate = DEVICE_SAMPLE_RATE;
   gAM.deviceConfig.dataCallback = audio_data_callback;
-  gAM.deviceConfig.pUserData = &voices;
+  // gAM.deviceConfig.pUserData = &gAM.voices;
 
   if (ma_device_init(NULL, &gAM.deviceConfig, &gAM.device) != MA_SUCCESS) {
     // LOGI("Failed to initialize audio device");
@@ -95807,7 +95801,7 @@ float audio_wave_callback(OscType type, float phase) {
 
 void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
                          ma_uint32 frameCount) {
-  Voice *voices = (Voice *)pDevice->pUserData;
+  Voice *voices = gAM.voices;
   float *out = (float *)pOutput;
   float sr = (float)pDevice->sampleRate;
 
@@ -95886,9 +95880,28 @@ float dsp_mix(float *inputs, int count) {
 //   print_hello_world(&(struct HelloWorld){"Hello, World!"});
 // }
 
-int cynther_audio_main(int argc, char **argv) {
-  audio_init();
+void cyn_init() { audio_init(); }
 
+void cyn_add_voice(Oscillator *osc, Oscillator *lfo) {
+  if (gAM.activeVoices >= MAX_VOICES) {
+    printf("Max voices reached!\n");
+    return;
+  }
+
+  // Find the first inactive voice slot
+  for (int i = 0; i < MAX_VOICES; i++) {
+    if (!gAM.voices[i].active) {
+      gAM.voices[i].osc = *osc;
+      gAM.voices[i].lfo = *lfo;
+      gAM.voices[i].active = true;
+      gAM.activeVoices++;
+      printf("Added voice %d, total active voices: %d\n", i, gAM.activeVoices);
+      return;
+    }
+  }
+}
+
+void cyn_play(int argc, char **argv) {
   printf("Audio started. Press ENTER to exit.\n");
 
   printf("Press Enter to quit...\n");
@@ -95898,6 +95911,5 @@ int cynther_audio_main(int argc, char **argv) {
 
   (void)argc;
   (void)argv;
-  return 0;
 }
 #endif
