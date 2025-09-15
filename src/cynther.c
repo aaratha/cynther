@@ -6,11 +6,12 @@
 #include "stdio.h"
 #endif
 
-// void wrap_print(struct HelloWorld *hw) {
-//   print_hello_world(&(struct HelloWorld){"Hello, World!"});
-// }
+float pattern_midi_freqs[NUM_NOTES];
 
-void cyn_init() { audio_init(); }
+void cyn_init() {
+  audio_init();
+  pattern_create_midi_freqs(pattern_midi_freqs);
+}
 
 void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo) {
   if (gAM.activeVoices >= MAX_VOICES) {
@@ -41,4 +42,42 @@ void cyn_play(int argc, char **argv) {
 
   (void)argc;
   (void)argv;
+}
+
+cyn_pattern *cyn_new_pattern(int count, ...) {
+  if (count <= 0)
+    return NULL;
+
+  cyn_pattern *pat = malloc(sizeof(cyn_pattern));
+  if (!pat)
+    return NULL;
+
+  pat->count = count;
+  pat->freqs = malloc(count * sizeof(float));
+  if (!pat->freqs) {
+    free(pat);
+    return NULL;
+  }
+
+  va_list args;
+  va_start(args, count);
+  for (int i = 0; i < count; i++) {
+    const char *note = va_arg(args, const char *);
+    int midi = pattern_note_to_midi(note);
+    if (midi < 0) {
+      pat->freqs[i] = 0.0f; // fallback for invalid note
+    } else {
+      pat->freqs[i] = pattern_midi_to_freq(midi);
+    }
+  }
+  va_end(args);
+
+  return pat;
+}
+
+void cyn_free_pattern(cyn_pattern *pat) {
+  if (!pat)
+    return;
+  free(pat->freqs);
+  free(pat);
 }

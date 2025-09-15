@@ -29,5 +29,12 @@ int main(int argc, char **argv) {
   cyn_osc lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
   cyn_add_voice(&osc2, &lfo2);
 
+  cyn_pattern *pattern = cyn_new_pattern(4, "C3", "Bf3", "A3", "G2");
+  float *freqs = pattern->freqs;
+  for (int i = 0; i < pattern->count; i++) {
+    printf("Note %d: %f Hz\n", i, freqs[i]);
+  }
+
   cyn_play(argc, argv);
+  cyn_free_pattern(pattern);
 }

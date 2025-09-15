@@ -95658,11 +95658,14 @@ SOFTWARE.
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define DEVICE_FORMAT ma_format_f32
 #define DEVICE_CHANNELS 2
 #define DEVICE_SAMPLE_RATE 48000
 #define MAX_VOICES 8
+#define NUM_NOTES 127
 
 typedef enum { SINE, SQUARE, SAW } OscType;
 
@@ -95724,10 +95727,23 @@ float dsp_biquad_process(cyn_biquad *bq, float in);
 
 float dsp_mix(float *inputs, int count);
 
+// Pattern API
+typedef struct {
+  float *freqs; // array of note frequencies
+  int count;    // number of notes
+} cyn_pattern;
+
+int pattern_note_to_midi(const char *name);
+float pattern_midi_to_freq(int midi);
+void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
+
 // Public Cynther API
 void cyn_init();
 void cyn_play(int argc, char **argv);
 void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo);
+
+cyn_pattern *cyn_new_pattern(int count, ...);
+void cyn_free_pattern(cyn_pattern *pat);
 
 
 #ifdef CYNTHER_IMPLEMENTATION
@@ -95738,12 +95754,6 @@ void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo);
 
 // void print_hello_world(struct HelloWorld *hw) { printf("%s\n", hw->message);
 // }
-
-cyn_osc osc1 = {.freq = 220.0f, .amp = 0.1f, .phase = 0.0f, .type = SINE};
-cyn_osc lfo1 = {.freq = 2.0f, .amp = 100.0f, .phase = 0.0f, .type = SINE};
-
-cyn_osc osc2 = {.freq = 440.0f, .amp = 0.05f, .phase = 0.0f, .type = SAW};
-cyn_osc lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
 
 cyn_audio_manager gAM = {.audioInitialized = false};
 
@@ -95866,7 +95876,71 @@ float dsp_mix(float *inputs, int count) {
   return sum / count;
 }
 
+#ifndef CYNTHER_IMPLEMENTATION
+#include "../include/cynther/cynther.h"
+#endif
 
+float pattern_midi_to_freq(int midi) {
+  if (midi < 0 || midi > 127)
+    return -1.0f; // invalid MIDI
+  return 440.0f * powf(2.0f, (midi - 69) / 12.0f);
+}
+
+int pattern_note_to_midi(const char *name) {
+  // Base note offsets
+  int offset = -1;
+  switch (name[0]) {
+  case 'C':
+    offset = 0;
+    break;
+  case 'D':
+    offset = 2;
+    break;
+  case 'E':
+    offset = 4;
+    break;
+  case 'F':
+    offset = 5;
+    break;
+  case 'G':
+    offset = 7;
+    break;
+  case 'A':
+    offset = 9;
+    break;
+  case 'B':
+    offset = 11;
+    break;
+  default:
+    return -1; // invalid note
+  }
+
+  // Adjust for sharp '#' or flat 'b'/'f'
+  if (name[1] == '#' || name[1] == 's')
+    offset += 1;
+  else if (name[1] == 'b' || name[1] == 'f')
+    offset -= 1;
+
+  // Parse octave
+  int octave = 0;
+  if (name[1] == '#' || name[1] == 's' || name[1] == 'b' || name[1] == 'f')
+    octave = atoi(name + 2);
+  else
+    octave = atoi(name + 1);
+
+  // MIDI number: C-1 = 0
+  int midi = (octave + 1) * 12 + offset;
+  if (midi < 0 || midi > 127)
+    return -1; // out of MIDI range
+
+  return midi;
+}
+
+void pattern_create_midi_freqs(float *midi_freqs) {
+  for (int i = 0; i < NUM_NOTES; i++) {
+    midi_freqs[i] = pattern_midi_to_freq(i);
+  }
+};
 
 #ifndef CYNTHER_IMPLEMENTATION
 #include "../include/cynther/cynther.h"
@@ -95876,11 +95950,12 @@ float dsp_mix(float *inputs, int count) {
 #include "stdio.h"
 #endif
 
-// void wrap_print(struct HelloWorld *hw) {
-//   print_hello_world(&(struct HelloWorld){"Hello, World!"});
-// }
+float pattern_midi_freqs[NUM_NOTES];
 
-void cyn_init() { audio_init(); }
+void cyn_init() {
+  audio_init();
+  pattern_create_midi_freqs(pattern_midi_freqs);
+}
 
 void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo) {
   if (gAM.activeVoices >= MAX_VOICES) {
@@ -95911,5 +95986,43 @@ void cyn_play(int argc, char **argv) {
 
   (void)argc;
   (void)argv;
+}
+
+cyn_pattern *cyn_new_pattern(int count, ...) {
+  if (count <= 0)
+    return NULL;
+
+  cyn_pattern *pat = malloc(sizeof(cyn_pattern));
+  if (!pat)
+    return NULL;
+
+  pat->count = count;
+  pat->freqs = malloc(count * sizeof(float));
+  if (!pat->freqs) {
+    free(pat);
+    return NULL;
+  }
+
+  va_list args;
+  va_start(args, count);
+  for (int i = 0; i < count; i++) {
+    const char *note = va_arg(args, const char *);
+    int midi = pattern_note_to_midi(note);
+    if (midi < 0) {
+      pat->freqs[i] = 0.0f; // fallback for invalid note
+    } else {
+      pat->freqs[i] = pattern_midi_to_freq(midi);
+    }
+  }
+  va_end(args);
+
+  return pat;
+}
+
+void cyn_free_pattern(cyn_pattern *pat) {
+  if (!pat)
+    return;
+  free(pat->freqs);
+  free(pat);
 }
 #endif

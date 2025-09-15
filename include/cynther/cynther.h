@@ -5,6 +5,8 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "../../external/miniaudio/miniaudio.h"
 
@@ -12,6 +14,7 @@
 #define DEVICE_CHANNELS 2
 #define DEVICE_SAMPLE_RATE 48000
 #define MAX_VOICES 8
+#define NUM_NOTES 127
 
 typedef enum { SINE, SQUARE, SAW } OscType;
 
@@ -73,7 +76,20 @@ float dsp_biquad_process(cyn_biquad *bq, float in);
 
 float dsp_mix(float *inputs, int count);
 
+// Pattern API
+typedef struct {
+  float *freqs; // array of note frequencies
+  int count;    // number of notes
+} cyn_pattern;
+
+int pattern_note_to_midi(const char *name);
+float pattern_midi_to_freq(int midi);
+void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
+
 // Public Cynther API
 void cyn_init();
 void cyn_play(int argc, char **argv);
 void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo);
+
+cyn_pattern *cyn_new_pattern(int count, ...);
+void cyn_free_pattern(cyn_pattern *pat);

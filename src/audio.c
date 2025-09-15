@@ -5,12 +5,6 @@
 // void print_hello_world(struct HelloWorld *hw) { printf("%s\n", hw->message);
 // }
 
-cyn_osc osc1 = {.freq = 220.0f, .amp = 0.1f, .phase = 0.0f, .type = SINE};
-cyn_osc lfo1 = {.freq = 2.0f, .amp = 100.0f, .phase = 0.0f, .type = SINE};
-
-cyn_osc osc2 = {.freq = 440.0f, .amp = 0.05f, .phase = 0.0f, .type = SAW};
-cyn_osc lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
-
 cyn_audio_manager gAM = {.audioInitialized = false};
 
 void audio_init_voices() {
