@@ -1,24 +1,5 @@
 #pragma once
-
-#include <stdio.h>
-
-
-
-#define DEVICE_FORMAT ma_format_f32
-#define DEVICE_CHANNELS 2
-#define DEVICE_SAMPLE_RATE 48000
-
-// struct HelloWorld {
-//   const char *message;
-// };
-
-// void print_hello_world(struct HelloWorld *hw);
-
-
-#ifdef CYNTHER_IMPLEMENTATION
-
 #define MINIAUDIO_IMPLEMENTATION
-/* === bundled miniaudio === */
 /*
 Audio playback and capture library. Choice of public domain or MIT-0. See license statements at the end of this file.
 miniaudio - v0.11.23 - 2025-09-11
@@ -95669,70 +95650,226 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+/* === cynther API === */
+#pragma once
 
+#include <assert.h>
+#include <math.h>
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdio.h>
+
+#define DEVICE_FORMAT ma_format_f32
+#define DEVICE_CHANNELS 2
+#define DEVICE_SAMPLE_RATE 48000
+#define MAX_VOICES 8
+
+typedef enum { SINE, SQUARE, SAW } OscType;
+
+typedef struct {
+  float freq;
+  float amp;
+  float phase;
+} LFO;
+
+typedef struct {
+  _Atomic float freq;
+  _Atomic float amp;
+  float phase; // not atomic, only used inside callback
+  OscType type;
+} Oscillator;
+
+typedef struct {
+  Oscillator osc;
+  Oscillator lfo;
+  bool active;
+} Voice;
+
+typedef struct {
+  float attack, decay, sustain, release;
+  float level;
+  int state;
+} ADSR;
+
+typedef struct {
+  float a0, a1, a2, b1, b2;
+  float z1, z2;
+} Biquad;
+
+typedef struct {
+  ma_device_config deviceConfig;
+  ma_device device;
+
+  int activeVoices;
+
+  bool audioInitialized;
+} AudioManager;
+
+// Audio API
+void audio_init();
+void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
+                         ma_uint32 frameCount);
+void audio_exit();
+
+// DSP API
+float dsp_sine(float phase);
+float dsp_square(float phase);
+float dsp_saw(float phase);
+
+float dsp_adsr_process(ADSR *env);
+
+void dsp_biquad_init_lowpass(Biquad *bq, float cutoff, float Q, float sr);
+float dsp_biquad_process(Biquad *bq, float in);
+
+float dsp_mix(float *inputs, int count);
+
+
+#ifdef CYNTHER_IMPLEMENTATION
 /* === cynther sources === */
 #ifndef CYNTHER_IMPLEMENTATION
 #include "../include/cynther/cynther.h"
 #endif
 
-#include <assert.h>
-
 // void print_hello_world(struct HelloWorld *hw) { printf("%s\n", hw->message);
 // }
 
-void data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
-                   ma_uint32 frameCount) {
-  ma_waveform *pSineWave;
+Oscillator osc1 = {.freq = 220.0f, .amp = 0.1f, .phase = 0.0f, .type = SINE};
+Oscillator lfo1 = {.freq = 2.0f, .amp = 100.0f, .phase = 0.0f, .type = SINE};
 
-  assert(pDevice->playback.channels == DEVICE_CHANNELS);
+Oscillator osc2 = {.freq = 440.0f, .amp = 0.05f, .phase = 0.0f, .type = SAW};
+Oscillator lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
 
-  pSineWave = (ma_waveform *)pDevice->pUserData;
-  assert(pSineWave != NULL);
+Voice voices[8];
 
-  ma_waveform_read_pcm_frames(pSineWave, pOutput, frameCount, NULL);
+AudioManager gAM = {.audioInitialized = false};
 
-  (void)pInput; /* Unused. */
+void audio_init_voices() {
+  for (int i = 0; i < MAX_VOICES; i++) {
+    voices[i].active = 0; // mark all voices inactive
+    voices[i].osc.freq = 0.0f;
+    voices[i].osc.phase = 0.0f;
+    voices[i].osc.amp = 0.0f;
+    voices[i].osc.type = SINE;
+  }
 }
 
-int audio_main(int argc, char **argv) {
-  ma_waveform sineWave;
-  ma_device_config deviceConfig;
-  ma_device device;
-  ma_waveform_config sineWaveConfig;
+void audio_init() {
+  if (gAM.audioInitialized)
+    return;
 
-  deviceConfig = ma_device_config_init(ma_device_type_playback);
-  deviceConfig.playback.format = DEVICE_FORMAT;
-  deviceConfig.playback.channels = DEVICE_CHANNELS;
-  deviceConfig.sampleRate = DEVICE_SAMPLE_RATE;
-  deviceConfig.dataCallback = data_callback;
-  deviceConfig.pUserData = &sineWave;
+  audio_init_voices();
 
-  if (ma_device_init(NULL, &deviceConfig, &device) != MA_SUCCESS) {
-    printf("Failed to open playback device.\n");
-    return -4;
+  gAM.activeVoices = 0;
+
+  Voice voice1 = {.osc = osc1, .lfo = lfo1, .active = true};
+  Voice voice2 = {.osc = osc2, .lfo = lfo2, .active = true};
+  voices[0] = voice1;
+  voices[1] = voice2;
+
+  for (int i = 0; i < MAX_VOICES; i++) {
+    if (voices[i].active == true)
+      gAM.activeVoices++;
   }
 
-  printf("Device Name: %s\n", device.playback.name);
+  gAM.deviceConfig = ma_device_config_init(ma_device_type_playback);
+  gAM.deviceConfig.playback.format = DEVICE_FORMAT;
+  gAM.deviceConfig.playback.channels = DEVICE_CHANNELS;
+  gAM.deviceConfig.sampleRate = DEVICE_SAMPLE_RATE;
+  gAM.deviceConfig.dataCallback = audio_data_callback;
+  gAM.deviceConfig.pUserData = &voices;
 
-  sineWaveConfig = ma_waveform_config_init(
-      device.playback.format, device.playback.channels, device.sampleRate,
-      ma_waveform_type_sine, 0.2, 220);
-  ma_waveform_init(&sineWaveConfig, &sineWave);
-
-  if (ma_device_start(&device) != MA_SUCCESS) {
-    printf("Failed to start playback device.\n");
-    ma_device_uninit(&device);
-    return -5;
+  if (ma_device_init(NULL, &gAM.deviceConfig, &gAM.device) != MA_SUCCESS) {
+    // LOGI("Failed to initialize audio device");
+    return;
   }
 
-  printf("Press Enter to quit...\n");
-  getchar();
+  if (ma_device_start(&gAM.device) != MA_SUCCESS) {
+    // LOGI("Failed to start audio device");
+    ma_device_uninit(&gAM.device);
+    return;
+  }
 
-  ma_device_uninit(&device);
+  gAM.audioInitialized = true;
+}
 
-  (void)argc;
-  (void)argv;
-  return 0;
+float audio_wave_callback(OscType type, float phase) {
+  switch (type) {
+  case SINE:
+    return dsp_sine(phase);
+  case SQUARE:
+    return dsp_square(phase);
+  case SAW:
+    return dsp_saw(phase);
+  default:
+    return 0.0f;
+  }
+}
+
+void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
+                         ma_uint32 frameCount) {
+  Voice *voices = (Voice *)pDevice->pUserData;
+  float *out = (float *)pOutput;
+  float sr = (float)pDevice->sampleRate;
+
+  double t = (double)clock() / CLOCKS_PER_SEC;
+
+  // Compute frequency modulation directly here
+  // float lfoFreq = 20.0f;
+  // float lfo = sinf(2.0f * M_PI * lfoFreq * t); // 0.5 Hz LFO
+  // float freq = 300.0f + 100.0f * lfo;
+
+  float inputs[gAM.activeVoices];
+
+  for (ma_uint32 i = 0; i < frameCount; i++) {
+    float inputs[gAM.activeVoices];
+
+    for (int i = 0; i < gAM.activeVoices; i++) {
+      Oscillator *osc = &voices[i].osc;
+      Oscillator *lfo = &voices[i].lfo;
+
+      float wave = audio_wave_callback(osc->type, osc->phase);
+      float lfoWave = audio_wave_callback(lfo->type, lfo->phase);
+      float freq = osc->freq + lfoWave * lfo->amp;
+
+      inputs[i] = osc->amp * wave;
+
+      osc->phase += freq / sr;
+      lfo->phase += lfo->freq / sr; // This was missing!
+
+      if (osc->phase >= 1.0f)
+        osc->phase -= 1.0f;
+    }
+    float sample = dsp_mix(inputs, gAM.activeVoices);
+
+    *out++ = sample;
+    *out++ = sample;
+  }
+
+  (void)pInput;
+}
+
+void audio_exit() {
+  if (gAM.audioInitialized) {
+    ma_device_uninit(&gAM.device);
+    gAM.audioInitialized = false;
+  }
+}
+
+#ifndef CYNTHER_IMPLEMENTATION
+#include "../include/cynther/cynther.h"
+#endif
+
+float dsp_sine(float phase) { return sinf(2.0f * M_PI * phase); }
+
+float dsp_square(float phase) { return phase < 0.5f ? 1.0f : -1.0f; }
+
+float dsp_saw(float phase) { return 2.0f * phase - 1.0f; }
+
+float dsp_mix(float *inputs, int count) {
+  float sum = 0.0f;
+  for (int i = 0; i < count; i++)
+    sum += inputs[i];
+  return sum / count;
 }
 
 
@@ -95749,7 +95886,18 @@ int audio_main(int argc, char **argv) {
 //   print_hello_world(&(struct HelloWorld){"Hello, World!"});
 // }
 
-void cynther_audio_main(int argc, char **argv) { audio_main(argc, argv); }
+int cynther_audio_main(int argc, char **argv) {
+  audio_init();
 
+  printf("Audio started. Press ENTER to exit.\n");
 
-#endif // CYNTHER_IMPLEMENTATION
+  printf("Press Enter to quit...\n");
+  getchar();
+
+  audio_exit();
+
+  (void)argc;
+  (void)argv;
+  return 0;
+}
+#endif
