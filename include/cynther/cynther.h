@@ -26,34 +26,34 @@ typedef struct {
   _Atomic float amp;
   float phase; // not atomic, only used inside callback
   OscType type;
-} Oscillator;
+} cyn_osc;
 
 typedef struct {
-  Oscillator osc;
-  Oscillator lfo;
+  cyn_osc osc;
+  cyn_osc lfo;
   bool active;
-} Voice;
+} cyn_voice;
 
 typedef struct {
   float attack, decay, sustain, release;
   float level;
   int state;
-} ADSR;
+} cyn_adsr;
 
 typedef struct {
   float a0, a1, a2, b1, b2;
   float z1, z2;
-} Biquad;
+} cyn_biquad;
 
 typedef struct {
   ma_device_config deviceConfig;
   ma_device device;
 
   int activeVoices;
-  Voice voices[MAX_VOICES];
+  cyn_voice voices[MAX_VOICES];
 
   bool audioInitialized;
-} AudioManager;
+} cyn_audio_manager;
 
 // Audio API
 void audio_init();
@@ -66,14 +66,14 @@ float dsp_sine(float phase);
 float dsp_square(float phase);
 float dsp_saw(float phase);
 
-float dsp_adsr_process(ADSR *env);
+float dsp_adsr_process(cyn_adsr *env);
 
-void dsp_biquad_init_lowpass(Biquad *bq, float cutoff, float Q, float sr);
-float dsp_biquad_process(Biquad *bq, float in);
+void dsp_biquad_init_lowpass(cyn_biquad *bq, float cutoff, float Q, float sr);
+float dsp_biquad_process(cyn_biquad *bq, float in);
 
 float dsp_mix(float *inputs, int count);
 
 // Public Cynther API
 void cyn_init();
 void cyn_play(int argc, char **argv);
-void cyn_add_voice(Oscillator *osc, Oscillator *lfo);
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo);

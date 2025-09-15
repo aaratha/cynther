@@ -19,19 +19,15 @@
 // }
 
 int main(int argc, char **argv) {
-
   cyn_init();
 
-  Oscillator osc1 = {.freq = 220.0f, .amp = 0.1f, .phase = 0.0f, .type = SINE};
-  Oscillator lfo1 = {.freq = 2.0f, .amp = 100.0f, .phase = 0.0f, .type = SINE};
-
-  Oscillator osc2 = {.freq = 440.0f, .amp = 0.05f, .phase = 0.0f, .type = SAW};
-  Oscillator lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
-
+  cyn_osc osc1 = {.freq = 220.0f, .amp = 0.1f, .phase = 0.0f, .type = SINE};
+  cyn_osc lfo1 = {.freq = 2.0f, .amp = 100.0f, .phase = 0.0f, .type = SINE};
   cyn_add_voice(&osc1, &lfo1);
+
+  cyn_osc osc2 = {.freq = 440.0f, .amp = 0.05f, .phase = 0.0f, .type = SAW};
+  cyn_osc lfo2 = {.freq = 0.0f, .amp = 0.0f, .phase = 0.0f, .type = SINE};
   cyn_add_voice(&osc2, &lfo2);
 
   cyn_play(argc, argv);
-
-  // cynther_audio_main(argc, argv);
 }

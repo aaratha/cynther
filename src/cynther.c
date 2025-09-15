@@ -12,7 +12,7 @@
 
 void cyn_init() { audio_init(); }
 
-void cyn_add_voice(Oscillator *osc, Oscillator *lfo) {
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo) {
   if (gAM.activeVoices >= MAX_VOICES) {
     printf("Max voices reached!\n");
     return;
