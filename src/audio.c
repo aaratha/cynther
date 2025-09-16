@@ -67,31 +67,38 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
 
   double t = (double)clock() / CLOCKS_PER_SEC;
 
-  // Compute frequency modulation directly here
-  // float lfoFreq = 20.0f;
-  // float lfo = sinf(2.0f * M_PI * lfoFreq * t); // 0.5 Hz LFO
-  // float freq = 300.0f + 100.0f * lfo;
-
   float inputs[gAM.activeVoices];
 
   for (ma_uint32 i = 0; i < frameCount; i++) {
     float inputs[gAM.activeVoices];
 
-    for (int i = 0; i < gAM.activeVoices; i++) {
-      cyn_osc *osc = &voices[i].osc;
-      cyn_osc *lfo = &voices[i].lfo;
+    for (int v = 0; v < gAM.activeVoices; v++) {
+      cyn_osc *osc = &voices[v].osc;
+      cyn_osc *lfo = &voices[v].lfo;
+      cyn_pattern *pat = &voices[v].pattern;
+
+      // handle next note in pattern
+      if (voices[v].sample_time >= voices[v].max_sample_time) {
+        pat->current = (pat->current + 1) % pat->count;
+        osc->freq = pat->freqs[pat->current];
+        voices[v].sample_time = 0.0f;
+      }
+
+      voices[v].sample_time++;
 
       float wave = audio_wave_callback(osc->type, osc->phase);
       float lfoWave = audio_wave_callback(lfo->type, lfo->phase);
       float freq = osc->freq + lfoWave * lfo->amp;
 
-      inputs[i] = osc->amp * wave;
+      inputs[v] = osc->amp * wave;
 
       osc->phase += freq / sr;
       lfo->phase += lfo->freq / sr; // This was missing!
 
       if (osc->phase >= 1.0f)
         osc->phase -= 1.0f;
+      if (lfo->phase >= 1.0f)
+        lfo->phase -= 1.0f;
     }
     float sample = dsp_mix(inputs, gAM.activeVoices);
 

@@ -95666,14 +95666,9 @@ SOFTWARE.
 #define DEVICE_SAMPLE_RATE 48000
 #define MAX_VOICES 8
 #define NUM_NOTES 127
+#define MAX_EVENTS 64
 
 typedef enum { SINE, SQUARE, SAW } OscType;
-
-typedef struct {
-  float freq;
-  float amp;
-  float phase;
-} LFO;
 
 typedef struct {
   _Atomic float freq;
@@ -95683,8 +95678,17 @@ typedef struct {
 } cyn_osc;
 
 typedef struct {
+  float *freqs; // array of note frequencies
+  int count;    // number of notes
+  int current;  // current note index
+} cyn_pattern;
+
+typedef struct {
   cyn_osc osc;
   cyn_osc lfo;
+  cyn_pattern pattern;
+  float sample_time;
+  float max_sample_time;
   bool active;
 } cyn_voice;
 
@@ -95728,10 +95732,6 @@ float dsp_biquad_process(cyn_biquad *bq, float in);
 float dsp_mix(float *inputs, int count);
 
 // Pattern API
-typedef struct {
-  float *freqs; // array of note frequencies
-  int count;    // number of notes
-} cyn_pattern;
 
 int pattern_note_to_midi(const char *name);
 float pattern_midi_to_freq(int midi);
@@ -95740,7 +95740,7 @@ void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
 // Public Cynther API
 void cyn_init();
 void cyn_play(int argc, char **argv);
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo);
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat);
 
 cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);
@@ -95817,31 +95817,38 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
 
   double t = (double)clock() / CLOCKS_PER_SEC;
 
-  // Compute frequency modulation directly here
-  // float lfoFreq = 20.0f;
-  // float lfo = sinf(2.0f * M_PI * lfoFreq * t); // 0.5 Hz LFO
-  // float freq = 300.0f + 100.0f * lfo;
-
   float inputs[gAM.activeVoices];
 
   for (ma_uint32 i = 0; i < frameCount; i++) {
     float inputs[gAM.activeVoices];
 
-    for (int i = 0; i < gAM.activeVoices; i++) {
-      cyn_osc *osc = &voices[i].osc;
-      cyn_osc *lfo = &voices[i].lfo;
+    for (int v = 0; v < gAM.activeVoices; v++) {
+      cyn_osc *osc = &voices[v].osc;
+      cyn_osc *lfo = &voices[v].lfo;
+      cyn_pattern *pat = &voices[v].pattern;
+
+      // handle next note in pattern
+      if (voices[v].sample_time >= voices[v].max_sample_time) {
+        pat->current = (pat->current + 1) % pat->count;
+        osc->freq = pat->freqs[pat->current];
+        voices[v].sample_time = 0.0f;
+      }
+
+      voices[v].sample_time++;
 
       float wave = audio_wave_callback(osc->type, osc->phase);
       float lfoWave = audio_wave_callback(lfo->type, lfo->phase);
       float freq = osc->freq + lfoWave * lfo->amp;
 
-      inputs[i] = osc->amp * wave;
+      inputs[v] = osc->amp * wave;
 
       osc->phase += freq / sr;
       lfo->phase += lfo->freq / sr; // This was missing!
 
       if (osc->phase >= 1.0f)
         osc->phase -= 1.0f;
+      if (lfo->phase >= 1.0f)
+        lfo->phase -= 1.0f;
     }
     float sample = dsp_mix(inputs, gAM.activeVoices);
 
@@ -95957,17 +95964,24 @@ void cyn_init() {
   pattern_create_midi_freqs(pattern_midi_freqs);
 }
 
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo) {
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat) {
   if (gAM.activeVoices >= MAX_VOICES) {
     printf("Max voices reached!\n");
     return;
   }
+
+  float sample_time = 0;
+  float max_sample_time = DEVICE_SAMPLE_RATE / (float)pat->count;
+  osc->freq = pat->freqs[0]; // start with the first note
 
   // Find the first inactive voice slot
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!gAM.voices[i].active) {
       gAM.voices[i].osc = *osc;
       gAM.voices[i].lfo = *lfo;
+      gAM.voices[i].pattern = *pat;
+      gAM.voices[i].sample_time = sample_time;
+      gAM.voices[i].max_sample_time = max_sample_time;
       gAM.voices[i].active = true;
       gAM.activeVoices++;
       printf("Added voice %d, total active voices: %d\n", i, gAM.activeVoices);
@@ -95997,6 +96011,7 @@ cyn_pattern *cyn_new_pattern(int count, ...) {
     return NULL;
 
   pat->count = count;
+  pat->current = 0; // start before the first note
   pat->freqs = malloc(count * sizeof(float));
   if (!pat->freqs) {
     free(pat);

@@ -13,17 +13,24 @@ void cyn_init() {
   pattern_create_midi_freqs(pattern_midi_freqs);
 }
 
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo) {
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat) {
   if (gAM.activeVoices >= MAX_VOICES) {
     printf("Max voices reached!\n");
     return;
   }
+
+  float sample_time = 0;
+  float max_sample_time = DEVICE_SAMPLE_RATE / (float)pat->count;
+  osc->freq = pat->freqs[0]; // start with the first note
 
   // Find the first inactive voice slot
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!gAM.voices[i].active) {
       gAM.voices[i].osc = *osc;
       gAM.voices[i].lfo = *lfo;
+      gAM.voices[i].pattern = *pat;
+      gAM.voices[i].sample_time = sample_time;
+      gAM.voices[i].max_sample_time = max_sample_time;
       gAM.voices[i].active = true;
       gAM.activeVoices++;
       printf("Added voice %d, total active voices: %d\n", i, gAM.activeVoices);
@@ -53,6 +60,7 @@ cyn_pattern *cyn_new_pattern(int count, ...) {
     return NULL;
 
   pat->count = count;
+  pat->current = 0; // start before the first note
   pat->freqs = malloc(count * sizeof(float));
   if (!pat->freqs) {
     free(pat);
