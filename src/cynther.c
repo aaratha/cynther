@@ -8,31 +8,37 @@
 
 float pattern_midi_freqs[NUM_NOTES];
 
-void cyn_init() {
-  audio_init();
+cyn_voice *cyn_init_voices() {
+  cyn_voice *voices = malloc(MAX_VOICES * sizeof(cyn_voice));
+  for (int i = 0; i < MAX_VOICES; i++) {
+    voices[i].active = 0;
+    voices[i].osc = NULL;
+    voices[i].lfo = NULL;
+    voices[i].env = NULL;
+    voices[i].pattern = NULL;
+  }
+  return voices;
+}
+
+void cyn_init(cyn_voice *voices) {
+  audio_init(voices);
   pattern_create_midi_freqs(pattern_midi_freqs);
 }
 
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat, cyn_adsr env) {
+void cyn_add_voice(cyn_voice voice) {
   if (gAM.activeVoices >= MAX_VOICES) {
     printf("Max voices reached!\n");
     return;
   }
 
   float sample_time = 0;
-  float max_sample_time = DEVICE_SAMPLE_RATE / (float)pat->count;
-  osc->freq = pat->freqs[0]; // start with the first note
+  float max_sample_time = DEVICE_SAMPLE_RATE / (float)voice.pattern->count;
+  voice.osc->freq = voice.pattern->freqs[0]; // start with the first note
 
   // Find the first inactive voice slot
   for (int i = 0; i < MAX_VOICES; i++) {
     if (!gAM.voices[i].active) {
-      gAM.voices[i].osc = *osc;
-      gAM.voices[i].lfo = *lfo;
-      gAM.voices[i].pattern = *pat;
-      gAM.voices[i].env = env;
-      gAM.voices[i].sample_time = sample_time;
-      gAM.voices[i].max_sample_time = max_sample_time;
-      gAM.voices[i].active = true;
+      gAM.voices[i] = voice;
       gAM.activeVoices++;
       printf("Added voice %d, total active voices: %d\n", i, gAM.activeVoices);
       return;
@@ -42,14 +48,38 @@ void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat, cyn_adsr env) {
 
 void cyn_play(int argc, char **argv) {
   printf("Audio started. Press ENTER to exit.\n");
-
-  printf("Press Enter to quit...\n");
   getchar();
 
   audio_exit();
+}
 
-  (void)argc;
-  (void)argv;
+cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
+                        cyn_adsr *env) {
+  cyn_voice voice;
+  if (!osc) {
+    fprintf(stderr, "Error: cyn_new_voice() called with NULL osc\n");
+    exit(EXIT_FAILURE); // terminate with error
+  }
+  if (pat == NULL) {
+    fprintf(stderr, "Error: cyn_new_voice() called with NULL pattern\n");
+    fprintf(stderr, "Must pass pattern with at least one note\n");
+    exit(EXIT_FAILURE); // terminate with error
+  }
+
+  // Always start inactive until explicitly added
+  voice.active = true;
+  voice.sample_time = 0.0f;
+
+  // Assign only what was provided, else NULL
+  voice.osc = osc;
+  voice.pattern = pat;
+  voice.lfo = lfo ? lfo : NULL;
+  voice.env = env ? env : NULL;
+
+  // Protect against NULL pattern
+  voice.max_sample_time = DEVICE_SAMPLE_RATE / (float)pat->count;
+
+  return voice;
 }
 
 cyn_pattern *cyn_new_pattern(int count, ...) {
@@ -89,4 +119,15 @@ void cyn_free_pattern(cyn_pattern *pat) {
     return;
   free(pat->freqs);
   free(pat);
+}
+
+cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release) {
+  cyn_adsr env;
+  env.attack = attack;
+  env.decay = decay;
+  env.sustain = sustain;
+  env.release = release;
+  env.level = 0.0f;
+  env.state = 0; // idle
+  return env;
 }

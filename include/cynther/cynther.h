@@ -39,10 +39,10 @@ typedef struct {
 } cyn_adsr;
 
 typedef struct {
-  cyn_osc osc;
-  cyn_osc lfo;
-  cyn_pattern pattern;
-  cyn_adsr env;
+  cyn_osc *osc;
+  cyn_osc *lfo;
+  cyn_pattern *pattern;
+  cyn_adsr *env;
   float sample_time;
   float max_sample_time;
   bool active;
@@ -58,13 +58,13 @@ typedef struct {
   ma_device device;
 
   int activeVoices;
-  cyn_voice voices[MAX_VOICES];
+  cyn_voice *voices;
 
   bool audioInitialized;
 } cyn_audio_manager;
 
 // Audio API
-void audio_init();
+void audio_init(cyn_voice *voices);
 void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
                          ma_uint32 frameCount);
 void audio_exit();
@@ -88,9 +88,15 @@ float pattern_midi_to_freq(int midi);
 void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
 
 // Public Cynther API
-void cyn_init();
+cyn_voice *cyn_init_voices();
+void cyn_init(cyn_voice *voices);
 void cyn_play(int argc, char **argv);
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat, cyn_adsr env);
+void cyn_add_voice(cyn_voice voice);
+
+cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
+                        cyn_adsr *env);
 
 cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);
+
+cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release);

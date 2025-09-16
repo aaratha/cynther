@@ -7,23 +7,12 @@
 
 cyn_audio_manager gAM = {.audioInitialized = false};
 
-void audio_init_voices() {
-  for (int i = 0; i < MAX_VOICES; i++) {
-    gAM.voices[i].active = 0; // mark all voices inactive
-    gAM.voices[i].osc.freq = 0.0f;
-    gAM.voices[i].osc.phase = 0.0f;
-    gAM.voices[i].osc.amp = 0.0f;
-    gAM.voices[i].osc.type = SINE;
-  }
-}
-
-void audio_init() {
+void audio_init(cyn_voice *voices) {
   if (gAM.audioInitialized)
     return;
 
-  audio_init_voices();
-
   gAM.activeVoices = 0;
+  gAM.voices = voices;
 
   gAM.deviceConfig = ma_device_config_init(ma_device_type_playback);
   gAM.deviceConfig.playback.format = DEVICE_FORMAT;
@@ -73,46 +62,59 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
     float inputs[gAM.activeVoices];
 
     for (int v = 0; v < gAM.activeVoices; v++) {
-      cyn_osc *osc = &voices[v].osc;
-      cyn_osc *lfo = &voices[v].lfo;
-      cyn_pattern *pat = &voices[v].pattern;
-      float adsr_level = voices[v].env.level;
+      cyn_osc *osc = voices[v].osc;
+      cyn_osc *lfo = voices[v].lfo;
+      cyn_pattern *pat = voices[v].pattern;
+      cyn_adsr *env = voices[v].env;
 
-      // Trigger release phase when note is about to end
-      float release_time = voices[v].env.release * DEVICE_SAMPLE_RATE;
-      if (voices[v].sample_time >= voices[v].max_sample_time - release_time && 
-          voices[v].env.state == 2) { // if in sustain
-        voices[v].env.state = 3; // go to release
+      // Only handle ADSR if env exists
+      if (env) {
+        float release_time = env->release * DEVICE_SAMPLE_RATE;
+        if (voices[v].sample_time >= voices[v].max_sample_time - release_time &&
+            env->state == 2) { // sustain
+          env->state = 3;      // release
+        }
       }
-      
+
       // handle next note in pattern
       if (voices[v].sample_time >= voices[v].max_sample_time) {
         pat->current = (pat->current + 1) % pat->count;
         osc->freq = pat->freqs[pat->current];
         voices[v].sample_time = 0.0f;
-        
-        // Always restart envelope for new note
-        voices[v].env.state = 0; // restart envelope
-        voices[v].env.level = 0.0f;
+
+        if (env) {
+          env->state = 0; // restart envelope
+          env->level = 0.0f;
+        }
       }
 
       voices[v].sample_time++;
-      dsp_adsr_process(&voices[v].env);
 
       float wave = audio_wave_callback(osc->type, osc->phase);
-      float lfoWave = audio_wave_callback(lfo->type, lfo->phase);
-      float freq = osc->freq + lfoWave * lfo->amp;
+      float lfoWave = 0.0f;
+      float freq = osc->freq;
 
-      inputs[v] = osc->amp * wave * adsr_level;
+      if (lfo) {
+        lfoWave = audio_wave_callback(lfo->type, lfo->phase);
+        freq += lfoWave * lfo->amp;
+        lfo->phase += lfo->freq / sr;
+        if (lfo->phase >= 1.0f)
+          lfo->phase -= 1.0f;
+      }
+
+      if (env) {
+        dsp_adsr_process(env);
+        inputs[v] = osc->amp * wave * env->level;
+      } else {
+        // Raw oscillator with no envelope
+        inputs[v] = osc->amp * wave;
+      }
 
       osc->phase += freq / sr;
-      lfo->phase += lfo->freq / sr; // This was missing!
-
       if (osc->phase >= 1.0f)
         osc->phase -= 1.0f;
-      if (lfo->phase >= 1.0f)
-        lfo->phase -= 1.0f;
     }
+
     float sample = dsp_mix(inputs, gAM.activeVoices);
 
     *out++ = sample;
