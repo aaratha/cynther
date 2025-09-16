@@ -13,7 +13,7 @@ void cyn_init() {
   pattern_create_midi_freqs(pattern_midi_freqs);
 }
 
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat) {
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat, cyn_adsr env) {
   if (gAM.activeVoices >= MAX_VOICES) {
     printf("Max voices reached!\n");
     return;
@@ -29,6 +29,7 @@ void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat) {
       gAM.voices[i].osc = *osc;
       gAM.voices[i].lfo = *lfo;
       gAM.voices[i].pattern = *pat;
+      gAM.voices[i].env = env;
       gAM.voices[i].sample_time = sample_time;
       gAM.voices[i].max_sample_time = max_sample_time;
       gAM.voices[i].active = true;

@@ -76,21 +76,34 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
       cyn_osc *osc = &voices[v].osc;
       cyn_osc *lfo = &voices[v].lfo;
       cyn_pattern *pat = &voices[v].pattern;
+      float adsr_level = voices[v].env.level;
 
+      // Trigger release phase when note is about to end
+      float release_time = voices[v].env.release * DEVICE_SAMPLE_RATE;
+      if (voices[v].sample_time >= voices[v].max_sample_time - release_time && 
+          voices[v].env.state == 2) { // if in sustain
+        voices[v].env.state = 3; // go to release
+      }
+      
       // handle next note in pattern
       if (voices[v].sample_time >= voices[v].max_sample_time) {
         pat->current = (pat->current + 1) % pat->count;
         osc->freq = pat->freqs[pat->current];
         voices[v].sample_time = 0.0f;
+        
+        // Always restart envelope for new note
+        voices[v].env.state = 0; // restart envelope
+        voices[v].env.level = 0.0f;
       }
 
       voices[v].sample_time++;
+      dsp_adsr_process(&voices[v].env);
 
       float wave = audio_wave_callback(osc->type, osc->phase);
       float lfoWave = audio_wave_callback(lfo->type, lfo->phase);
       float freq = osc->freq + lfoWave * lfo->amp;
 
-      inputs[v] = osc->amp * wave;
+      inputs[v] = osc->amp * wave * adsr_level;
 
       osc->phase += freq / sr;
       lfo->phase += lfo->freq / sr; // This was missing!

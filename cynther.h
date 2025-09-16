@@ -95684,19 +95684,20 @@ typedef struct {
 } cyn_pattern;
 
 typedef struct {
-  cyn_osc osc;
-  cyn_osc lfo;
-  cyn_pattern pattern;
-  float sample_time;
-  float max_sample_time;
-  bool active;
-} cyn_voice;
-
-typedef struct {
   float attack, decay, sustain, release;
   float level;
   int state;
 } cyn_adsr;
+
+typedef struct {
+  cyn_osc osc;
+  cyn_osc lfo;
+  cyn_pattern pattern;
+  cyn_adsr env;
+  float sample_time;
+  float max_sample_time;
+  bool active;
+} cyn_voice;
 
 typedef struct {
   float a0, a1, a2, b1, b2;
@@ -95740,7 +95741,7 @@ void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
 // Public Cynther API
 void cyn_init();
 void cyn_play(int argc, char **argv);
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat);
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat, cyn_adsr env);
 
 cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);
@@ -95826,21 +95827,34 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
       cyn_osc *osc = &voices[v].osc;
       cyn_osc *lfo = &voices[v].lfo;
       cyn_pattern *pat = &voices[v].pattern;
+      float adsr_level = voices[v].env.level;
 
+      // Trigger release phase when note is about to end
+      float release_time = voices[v].env.release * DEVICE_SAMPLE_RATE;
+      if (voices[v].sample_time >= voices[v].max_sample_time - release_time && 
+          voices[v].env.state == 2) { // if in sustain
+        voices[v].env.state = 3; // go to release
+      }
+      
       // handle next note in pattern
       if (voices[v].sample_time >= voices[v].max_sample_time) {
         pat->current = (pat->current + 1) % pat->count;
         osc->freq = pat->freqs[pat->current];
         voices[v].sample_time = 0.0f;
+        
+        // Always restart envelope for new note
+        voices[v].env.state = 0; // restart envelope
+        voices[v].env.level = 0.0f;
       }
 
       voices[v].sample_time++;
+      dsp_adsr_process(&voices[v].env);
 
       float wave = audio_wave_callback(osc->type, osc->phase);
       float lfoWave = audio_wave_callback(lfo->type, lfo->phase);
       float freq = osc->freq + lfoWave * lfo->amp;
 
-      inputs[v] = osc->amp * wave;
+      inputs[v] = osc->amp * wave * adsr_level;
 
       osc->phase += freq / sr;
       lfo->phase += lfo->freq / sr; // This was missing!
@@ -95881,6 +95895,61 @@ float dsp_mix(float *inputs, int count) {
   for (int i = 0; i < count; i++)
     sum += inputs[i];
   return sum / count;
+}
+
+float dsp_adsr_process(cyn_adsr *env) {
+  switch (env->state) {
+
+  case 0: // Attack
+    if (env->attack <= 0.0f) {
+      env->level = 1.0f;
+      env->state = 1; // move to decay immediately
+    } else {
+      float attack_rate = 1.0f / (env->attack * DEVICE_SAMPLE_RATE);
+      env->level += attack_rate;
+      if (env->level >= 1.0f) {
+        env->level = 1.0f;
+        env->state = 1;
+      }
+    }
+    break;
+
+  case 1: // Decay
+    if (env->decay <= 0.0f) {
+      env->level = env->sustain;
+      env->state = 2; // Move to Sustain immediately
+    } else {
+      float decay_rate = (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
+      env->level -= decay_rate;
+      if (env->level <= env->sustain) {
+        env->level = env->sustain;
+        env->state = 2; // Move to Sustain
+      }
+    }
+    break;
+  case 2: // Sustain
+    // Hold sustain level
+    break;
+  case 3: // Release
+    if (env->release <= 0.0f) {
+      env->level = 0.0f;
+      env->state = 4;
+    } else {
+      float release_rate = env->level / (env->release * DEVICE_SAMPLE_RATE);
+      env->level -= release_rate;
+      if (env->level <= 0.0f) {
+        env->level = 0.0f;
+        env->state = 4;
+      }
+    }
+    break;
+  case 4: // Inactive
+    env->level = 0.0f;
+    break;
+  default:
+    break;
+  }
+  return env->level;
 }
 
 #ifndef CYNTHER_IMPLEMENTATION
@@ -95964,7 +96033,7 @@ void cyn_init() {
   pattern_create_midi_freqs(pattern_midi_freqs);
 }
 
-void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat) {
+void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat, cyn_adsr env) {
   if (gAM.activeVoices >= MAX_VOICES) {
     printf("Max voices reached!\n");
     return;
@@ -95980,6 +96049,7 @@ void cyn_add_voice(cyn_osc *osc, cyn_osc *lfo, cyn_pattern *pat) {
       gAM.voices[i].osc = *osc;
       gAM.voices[i].lfo = *lfo;
       gAM.voices[i].pattern = *pat;
+      gAM.voices[i].env = env;
       gAM.voices[i].sample_time = sample_time;
       gAM.voices[i].max_sample_time = max_sample_time;
       gAM.voices[i].active = true;
