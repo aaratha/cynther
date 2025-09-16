@@ -35,19 +35,6 @@ void audio_init(cyn_voice *voices) {
   gAM.audioInitialized = true;
 }
 
-float audio_wave_callback(OscType type, float phase) {
-  switch (type) {
-  case SINE:
-    return dsp_sine(phase);
-  case SQUARE:
-    return dsp_square(phase);
-  case SAW:
-    return dsp_saw(phase);
-  default:
-    return 0.0f;
-  }
-}
-
 void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
                          ma_uint32 frameCount) {
   cyn_voice *voices = gAM.voices;
@@ -90,24 +77,23 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
 
       voices[v].sample_time++;
 
-      float wave = audio_wave_callback(osc->type, osc->phase);
-      float lfoWave = 0.0f;
+      dsp_osc_callback(osc, osc->phase);
       float freq = osc->freq;
 
       if (lfo) {
-        lfoWave = audio_wave_callback(lfo->type, lfo->phase);
-        freq += lfoWave * lfo->amp;
+        dsp_osc_callback(lfo, lfo->phase);
+        freq += lfo->level * lfo->amp;
         lfo->phase += lfo->freq / sr;
         if (lfo->phase >= 1.0f)
           lfo->phase -= 1.0f;
       }
 
       if (env) {
-        dsp_adsr_process(env);
-        inputs[v] = osc->amp * wave * env->level;
+        dsp_adsr_callback(env);
+        inputs[v] = osc->amp * osc->level * env->level;
       } else {
         // Raw oscillator with no envelope
-        inputs[v] = osc->amp * wave;
+        inputs[v] = osc->amp * osc->level;
       }
 
       osc->phase += freq / sr;

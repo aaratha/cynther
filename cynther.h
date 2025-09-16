@@ -95668,13 +95668,14 @@ SOFTWARE.
 #define NUM_NOTES 127
 #define MAX_EVENTS 64
 
-typedef enum { SINE, SQUARE, SAW } OscType;
+typedef enum { SINE, SQUARE, SAW } cyn_osc_type;
 
 typedef struct {
   _Atomic float freq;
   _Atomic float amp;
   float phase; // not atomic, only used inside callback
-  OscType type;
+  float level;
+  cyn_osc_type type;
 } cyn_osc;
 
 typedef struct {
@@ -95725,7 +95726,8 @@ float dsp_sine(float phase);
 float dsp_square(float phase);
 float dsp_saw(float phase);
 
-float dsp_adsr_process(cyn_adsr *env);
+void dsp_osc_callback(cyn_osc *osc, float phase);
+void dsp_adsr_callback(cyn_adsr *env);
 
 void dsp_biquad_init_lowpass(cyn_biquad *bq, float cutoff, float Q, float sr);
 float dsp_biquad_process(cyn_biquad *bq, float in);
@@ -95744,6 +95746,7 @@ void cyn_init(cyn_voice *voices);
 void cyn_play(int argc, char **argv);
 void cyn_add_voice(cyn_voice voice);
 
+cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type);
 cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
                         cyn_adsr *env);
 
@@ -95792,19 +95795,6 @@ void audio_init(cyn_voice *voices) {
   gAM.audioInitialized = true;
 }
 
-float audio_wave_callback(OscType type, float phase) {
-  switch (type) {
-  case SINE:
-    return dsp_sine(phase);
-  case SQUARE:
-    return dsp_square(phase);
-  case SAW:
-    return dsp_saw(phase);
-  default:
-    return 0.0f;
-  }
-}
-
 void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
                          ma_uint32 frameCount) {
   cyn_voice *voices = gAM.voices;
@@ -95847,24 +95837,23 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
 
       voices[v].sample_time++;
 
-      float wave = audio_wave_callback(osc->type, osc->phase);
-      float lfoWave = 0.0f;
+      dsp_osc_callback(osc, osc->phase);
       float freq = osc->freq;
 
       if (lfo) {
-        lfoWave = audio_wave_callback(lfo->type, lfo->phase);
-        freq += lfoWave * lfo->amp;
+        dsp_osc_callback(lfo, lfo->phase);
+        freq += lfo->level * lfo->amp;
         lfo->phase += lfo->freq / sr;
         if (lfo->phase >= 1.0f)
           lfo->phase -= 1.0f;
       }
 
       if (env) {
-        dsp_adsr_process(env);
-        inputs[v] = osc->amp * wave * env->level;
+        dsp_adsr_callback(env);
+        inputs[v] = osc->amp * osc->level * env->level;
       } else {
         // Raw oscillator with no envelope
-        inputs[v] = osc->amp * wave;
+        inputs[v] = osc->amp * osc->level;
       }
 
       osc->phase += freq / sr;
@@ -95905,7 +95894,23 @@ float dsp_mix(float *inputs, int count) {
   return sum / count;
 }
 
-float dsp_adsr_process(cyn_adsr *env) {
+void dsp_osc_callback(cyn_osc *osc, float phase) {
+  switch (osc->type) {
+  case SINE:
+    osc->level = dsp_sine(phase);
+    break;
+  case SQUARE:
+    osc->level = dsp_square(phase);
+    break;
+  case SAW:
+    osc->level = dsp_saw(phase);
+    break;
+  default:
+    osc->level = 0.0f;
+  }
+}
+
+void dsp_adsr_callback(cyn_adsr *env) {
   switch (env->state) {
 
   case 0: // Attack
@@ -95927,7 +95932,8 @@ float dsp_adsr_process(cyn_adsr *env) {
       env->level = env->sustain;
       env->state = 2; // Move to Sustain immediately
     } else {
-      float decay_rate = (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
+      float decay_rate =
+          (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
       env->level -= decay_rate;
       if (env->level <= env->sustain) {
         env->level = env->sustain;
@@ -95956,8 +95962,7 @@ float dsp_adsr_process(cyn_adsr *env) {
     break;
   default:
     break;
-  }
-  return env->level;
+  };
 }
 
 #ifndef CYNTHER_IMPLEMENTATION
@@ -96079,6 +96084,16 @@ void cyn_play(int argc, char **argv) {
   getchar();
 
   audio_exit();
+}
+
+cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type) {
+  cyn_osc osc;
+  osc.freq = freq;
+  osc.amp = amp;
+  osc.phase = phase;
+  osc.level = 0.0f;
+  osc.type = type;
+  return osc;
 }
 
 cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,

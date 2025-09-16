@@ -53,6 +53,16 @@ void cyn_play(int argc, char **argv) {
   audio_exit();
 }
 
+cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type) {
+  cyn_osc osc;
+  osc.freq = freq;
+  osc.amp = amp;
+  osc.phase = phase;
+  osc.level = 0.0f;
+  osc.type = type;
+  return osc;
+}
+
 cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
                         cyn_adsr *env) {
   cyn_voice voice;

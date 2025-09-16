@@ -15,7 +15,23 @@ float dsp_mix(float *inputs, int count) {
   return sum / count;
 }
 
-float dsp_adsr_process(cyn_adsr *env) {
+void dsp_osc_callback(cyn_osc *osc, float phase) {
+  switch (osc->type) {
+  case SINE:
+    osc->level = dsp_sine(phase);
+    break;
+  case SQUARE:
+    osc->level = dsp_square(phase);
+    break;
+  case SAW:
+    osc->level = dsp_saw(phase);
+    break;
+  default:
+    osc->level = 0.0f;
+  }
+}
+
+void dsp_adsr_callback(cyn_adsr *env) {
   switch (env->state) {
 
   case 0: // Attack
@@ -37,7 +53,8 @@ float dsp_adsr_process(cyn_adsr *env) {
       env->level = env->sustain;
       env->state = 2; // Move to Sustain immediately
     } else {
-      float decay_rate = (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
+      float decay_rate =
+          (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
       env->level -= decay_rate;
       if (env->level <= env->sustain) {
         env->level = env->sustain;
@@ -66,6 +83,5 @@ float dsp_adsr_process(cyn_adsr *env) {
     break;
   default:
     break;
-  }
-  return env->level;
+  };
 }

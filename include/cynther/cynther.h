@@ -17,13 +17,14 @@
 #define NUM_NOTES 127
 #define MAX_EVENTS 64
 
-typedef enum { SINE, SQUARE, SAW } OscType;
+typedef enum { SINE, SQUARE, SAW } cyn_osc_type;
 
 typedef struct {
   _Atomic float freq;
   _Atomic float amp;
   float phase; // not atomic, only used inside callback
-  OscType type;
+  float level;
+  cyn_osc_type type;
 } cyn_osc;
 
 typedef struct {
@@ -74,7 +75,8 @@ float dsp_sine(float phase);
 float dsp_square(float phase);
 float dsp_saw(float phase);
 
-float dsp_adsr_process(cyn_adsr *env);
+void dsp_osc_callback(cyn_osc *osc, float phase);
+void dsp_adsr_callback(cyn_adsr *env);
 
 void dsp_biquad_init_lowpass(cyn_biquad *bq, float cutoff, float Q, float sr);
 float dsp_biquad_process(cyn_biquad *bq, float in);
@@ -93,6 +95,7 @@ void cyn_init(cyn_voice *voices);
 void cyn_play(int argc, char **argv);
 void cyn_add_voice(cyn_voice voice);
 
+cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type);
 cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
                         cyn_adsr *env);
 
