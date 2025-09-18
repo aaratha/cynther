@@ -95669,6 +95669,7 @@ SOFTWARE.
 #define MAX_EVENTS 64
 
 typedef enum { SINE, SQUARE, SAW } cyn_osc_type;
+typedef enum { LOWPASS, HIGHPASS } cyn_filter_type;
 
 typedef struct {
   _Atomic float freq;
@@ -95685,8 +95686,8 @@ typedef struct {
 } cyn_pattern;
 
 typedef struct {
-  float attack, decay, sustain, release;
-  float level;
+  _Atomic float attack, decay, sustain, release;
+  _Atomic float level;
   int state;
 } cyn_adsr;
 
@@ -95703,7 +95704,8 @@ typedef struct {
 typedef struct {
   float a0, a1, a2, b1, b2;
   float z1, z2;
-} cyn_biquad;
+  cyn_filter_type type;
+} cyn_filter;
 
 typedef struct {
   ma_device_config deviceConfig;
@@ -95729,8 +95731,7 @@ float dsp_saw(float phase);
 void dsp_osc_callback(cyn_osc *osc, float phase);
 void dsp_adsr_callback(cyn_adsr *env);
 
-void dsp_biquad_init_lowpass(cyn_biquad *bq, float cutoff, float Q, float sr);
-float dsp_biquad_process(cyn_biquad *bq, float in);
+float _dsp_filter_process(cyn_filter *fl, float in);
 
 float dsp_mix(float *inputs, int count);
 
@@ -95754,6 +95755,8 @@ cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);
 
 cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release);
+
+void _cyn_new_filter(cyn_filter_type type, float cutoff, float Q, float sr);
 
 
 #ifdef CYNTHER_IMPLEMENTATION
@@ -95912,31 +95915,31 @@ void dsp_osc_callback(cyn_osc *osc, float phase) {
 
 void dsp_adsr_callback(cyn_adsr *env) {
   switch (env->state) {
-
   case 0: // Attack
-    if (env->attack <= 0.0f) {
-      env->level = 1.0f;
+    if (atomic_load(&env->attack) <= 0.0f) {
+      atomic_store(&env->level, 1.0f);
       env->state = 1; // move to decay immediately
     } else {
-      float attack_rate = 1.0f / (env->attack * DEVICE_SAMPLE_RATE);
-      env->level += attack_rate;
-      if (env->level >= 1.0f) {
-        env->level = 1.0f;
+      float attack_rate =
+          1.0f / (atomic_load(&env->attack) * DEVICE_SAMPLE_RATE);
+      atomic_store(&env->level, atomic_load(&env->level) + attack_rate);
+      if (atomic_load(&env->level) >= 1.0f) {
+        atomic_store(&env->level, 1.0f);
         env->state = 1;
       }
     }
     break;
 
   case 1: // Decay
-    if (env->decay <= 0.0f) {
-      env->level = env->sustain;
+    if (atomic_load(&env->decay) <= 0.0f) {
+      atomic_store(&env->level, atomic_load(&env->sustain));
       env->state = 2; // Move to Sustain immediately
     } else {
-      float decay_rate =
-          (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
-      env->level -= decay_rate;
-      if (env->level <= env->sustain) {
-        env->level = env->sustain;
+      float decay_rate = (1.0f - atomic_load(&env->sustain)) /
+                         (atomic_load(&env->decay) * DEVICE_SAMPLE_RATE);
+      atomic_store(&env->level, atomic_load(&env->level) - decay_rate);
+      if (atomic_load(&env->level) <= atomic_load(&env->sustain)) {
+        atomic_store(&env->level, atomic_load(&env->sustain));
         env->state = 2; // Move to Sustain
       }
     }
@@ -95945,20 +95948,21 @@ void dsp_adsr_callback(cyn_adsr *env) {
     // Hold sustain level
     break;
   case 3: // Release
-    if (env->release <= 0.0f) {
-      env->level = 0.0f;
+    if (atomic_load(&env->release) <= 0.0f) {
+      atomic_store(&env->level, 0.0f);
       env->state = 4;
     } else {
-      float release_rate = env->level / (env->release * DEVICE_SAMPLE_RATE);
-      env->level -= release_rate;
-      if (env->level <= 0.0f) {
-        env->level = 0.0f;
+      float release_rate = atomic_load(&env->level) /
+                           (atomic_load(&env->release) * DEVICE_SAMPLE_RATE);
+      atomic_store(&env->level, atomic_load(&env->level) - release_rate);
+      if (atomic_load(&env->level) <= 0.0f) {
+        atomic_store(&env->level, 0.0f);
         env->state = 4;
       }
     }
     break;
   case 4: // Inactive
-    env->level = 0.0f;
+    atomic_store(&env->level, 0.0f);
     break;
   default:
     break;
@@ -96040,6 +96044,7 @@ void pattern_create_midi_freqs(float *midi_freqs) {
 #endif
 
 float pattern_midi_freqs[NUM_NOTES];
+bool CyntherRunning = false;
 
 cyn_voice *cyn_init_voices() {
   cyn_voice *voices = malloc(MAX_VOICES * sizeof(cyn_voice));
@@ -96056,6 +96061,7 @@ cyn_voice *cyn_init_voices() {
 void cyn_init(cyn_voice *voices) {
   audio_init(voices);
   pattern_create_midi_freqs(pattern_midi_freqs);
+  CyntherRunning = true;
 }
 
 void cyn_add_voice(cyn_voice voice) {
@@ -96083,6 +96089,7 @@ void cyn_play(int argc, char **argv) {
   printf("Audio started. Press ENTER to exit.\n");
   getchar();
 
+  CyntherRunning = false;
   audio_exit();
 }
 

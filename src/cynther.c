@@ -7,6 +7,7 @@
 #endif
 
 float pattern_midi_freqs[NUM_NOTES];
+bool CyntherRunning = false;
 
 cyn_voice *cyn_init_voices() {
   cyn_voice *voices = malloc(MAX_VOICES * sizeof(cyn_voice));
@@ -23,6 +24,7 @@ cyn_voice *cyn_init_voices() {
 void cyn_init(cyn_voice *voices) {
   audio_init(voices);
   pattern_create_midi_freqs(pattern_midi_freqs);
+  CyntherRunning = true;
 }
 
 void cyn_add_voice(cyn_voice voice) {
@@ -50,6 +52,7 @@ void cyn_play(int argc, char **argv) {
   printf("Audio started. Press ENTER to exit.\n");
   getchar();
 
+  CyntherRunning = false;
   audio_exit();
 }
 

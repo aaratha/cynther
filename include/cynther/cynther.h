@@ -18,6 +18,7 @@
 #define MAX_EVENTS 64
 
 typedef enum { SINE, SQUARE, SAW } cyn_osc_type;
+typedef enum { LOWPASS, HIGHPASS } cyn_filter_type;
 
 typedef struct {
   _Atomic float freq;
@@ -34,8 +35,8 @@ typedef struct {
 } cyn_pattern;
 
 typedef struct {
-  float attack, decay, sustain, release;
-  float level;
+  _Atomic float attack, decay, sustain, release;
+  _Atomic float level;
   int state;
 } cyn_adsr;
 
@@ -52,7 +53,8 @@ typedef struct {
 typedef struct {
   float a0, a1, a2, b1, b2;
   float z1, z2;
-} cyn_biquad;
+  cyn_filter_type type;
+} cyn_filter;
 
 typedef struct {
   ma_device_config deviceConfig;
@@ -78,8 +80,7 @@ float dsp_saw(float phase);
 void dsp_osc_callback(cyn_osc *osc, float phase);
 void dsp_adsr_callback(cyn_adsr *env);
 
-void dsp_biquad_init_lowpass(cyn_biquad *bq, float cutoff, float Q, float sr);
-float dsp_biquad_process(cyn_biquad *bq, float in);
+float _dsp_filter_process(cyn_filter *fl, float in);
 
 float dsp_mix(float *inputs, int count);
 
@@ -103,3 +104,5 @@ cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);
 
 cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release);
+
+void _cyn_new_filter(cyn_filter_type type, float cutoff, float Q, float sr);

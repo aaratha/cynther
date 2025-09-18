@@ -33,31 +33,31 @@ void dsp_osc_callback(cyn_osc *osc, float phase) {
 
 void dsp_adsr_callback(cyn_adsr *env) {
   switch (env->state) {
-
   case 0: // Attack
-    if (env->attack <= 0.0f) {
-      env->level = 1.0f;
+    if (atomic_load(&env->attack) <= 0.0f) {
+      atomic_store(&env->level, 1.0f);
       env->state = 1; // move to decay immediately
     } else {
-      float attack_rate = 1.0f / (env->attack * DEVICE_SAMPLE_RATE);
-      env->level += attack_rate;
-      if (env->level >= 1.0f) {
-        env->level = 1.0f;
+      float attack_rate =
+          1.0f / (atomic_load(&env->attack) * DEVICE_SAMPLE_RATE);
+      atomic_store(&env->level, atomic_load(&env->level) + attack_rate);
+      if (atomic_load(&env->level) >= 1.0f) {
+        atomic_store(&env->level, 1.0f);
         env->state = 1;
       }
     }
     break;
 
   case 1: // Decay
-    if (env->decay <= 0.0f) {
-      env->level = env->sustain;
+    if (atomic_load(&env->decay) <= 0.0f) {
+      atomic_store(&env->level, atomic_load(&env->sustain));
       env->state = 2; // Move to Sustain immediately
     } else {
-      float decay_rate =
-          (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
-      env->level -= decay_rate;
-      if (env->level <= env->sustain) {
-        env->level = env->sustain;
+      float decay_rate = (1.0f - atomic_load(&env->sustain)) /
+                         (atomic_load(&env->decay) * DEVICE_SAMPLE_RATE);
+      atomic_store(&env->level, atomic_load(&env->level) - decay_rate);
+      if (atomic_load(&env->level) <= atomic_load(&env->sustain)) {
+        atomic_store(&env->level, atomic_load(&env->sustain));
         env->state = 2; // Move to Sustain
       }
     }
@@ -66,20 +66,21 @@ void dsp_adsr_callback(cyn_adsr *env) {
     // Hold sustain level
     break;
   case 3: // Release
-    if (env->release <= 0.0f) {
-      env->level = 0.0f;
+    if (atomic_load(&env->release) <= 0.0f) {
+      atomic_store(&env->level, 0.0f);
       env->state = 4;
     } else {
-      float release_rate = env->level / (env->release * DEVICE_SAMPLE_RATE);
-      env->level -= release_rate;
-      if (env->level <= 0.0f) {
-        env->level = 0.0f;
+      float release_rate = atomic_load(&env->level) /
+                           (atomic_load(&env->release) * DEVICE_SAMPLE_RATE);
+      atomic_store(&env->level, atomic_load(&env->level) - release_rate);
+      if (atomic_load(&env->level) <= 0.0f) {
+        atomic_store(&env->level, 0.0f);
         env->state = 4;
       }
     }
     break;
   case 4: // Inactive
-    env->level = 0.0f;
+    atomic_store(&env->level, 0.0f);
     break;
   default:
     break;
