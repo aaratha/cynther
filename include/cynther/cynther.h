@@ -96,8 +96,9 @@ float cyn_time();
 cyn_voice *cyn_init_voices();
 void cyn_init(cyn_voice *voices);
 void cyn_play(int argc, char **argv);
-void cyn_add_voice(cyn_voice voice);
+void cyn_exit();
 
+void cyn_add_voice(cyn_voice voice);
 cyn_voice *cyn_get_voice(char *name);
 
 void cyn_set_adsr_attack(char *name, float value);
