@@ -50,12 +50,8 @@ void cyn_add_voice(cyn_voice voice) {
   }
 }
 
-void cyn_play(int argc, char **argv) {
-  printf("Audio started. Press ENTER to exit.\n");
-  getchar();
-
-  CYNTHER_RUNNING = false;
-  audio_exit();
+void cyn_begin() {
+  printf("Audio system initialized. Active voices: %d/8\n", gAM.activeVoices);
 }
 
 cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type) {

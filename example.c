@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
   // cyn_voice kick_voice = cyn_new_voice(&kick, pattern_kick, NULL, &env_kick);
   // // cyn_add_voice(kick_voice);
 
-  printf("Audio system initialized. Active voices: %d\n", gAM.activeVoices);
+  cyn_begin();
 
   // Modify ADSR parameters in real-time
   while (CYNTHER_RUNNING) {

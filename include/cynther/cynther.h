@@ -95,7 +95,7 @@ void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
 float cyn_time();
 cyn_voice *cyn_init_voices();
 void cyn_init(cyn_voice *voices);
-void cyn_play(int argc, char **argv);
+void cyn_begin();
 void cyn_exit();
 
 void cyn_add_voice(cyn_voice voice);
