@@ -48,6 +48,7 @@ typedef struct {
   float sample_time;
   float max_sample_time;
   bool active;
+  char *name;
 } cyn_voice;
 
 typedef struct {
@@ -91,14 +92,22 @@ float pattern_midi_to_freq(int midi);
 void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
 
 // Public Cynther API
+float cyn_time();
 cyn_voice *cyn_init_voices();
 void cyn_init(cyn_voice *voices);
 void cyn_play(int argc, char **argv);
 void cyn_add_voice(cyn_voice voice);
 
+cyn_voice *cyn_get_voice(char *name);
+
+void cyn_set_adsr_attack(char *name, float value);
+void cyn_set_adsr_decay(char *name, float value);
+void cyn_set_adsr_sustain(char *name, float value);
+void cyn_set_adsr_release(char *name, float value);
+
 cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type);
-cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
-                        cyn_adsr *env);
+cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat,
+                        cyn_osc *lfo, cyn_adsr *env);
 
 cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);

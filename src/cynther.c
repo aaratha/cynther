@@ -9,6 +9,8 @@
 float pattern_midi_freqs[NUM_NOTES];
 bool CyntherRunning = false;
 
+float cyn_time() { return (float)(clock()) / CLOCKS_PER_SEC; }
+
 cyn_voice *cyn_init_voices() {
   cyn_voice *voices = malloc(MAX_VOICES * sizeof(cyn_voice));
   for (int i = 0; i < MAX_VOICES; i++) {
@@ -66,8 +68,8 @@ cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type) {
   return osc;
 }
 
-cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
-                        cyn_adsr *env) {
+cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat,
+                        cyn_osc *lfo, cyn_adsr *env) {
   cyn_voice voice;
   if (!osc) {
     fprintf(stderr, "Error: cyn_new_voice() called with NULL osc\n");
@@ -82,6 +84,7 @@ cyn_voice cyn_new_voice(cyn_osc *osc, cyn_pattern *pat, cyn_osc *lfo,
   // Always start inactive until explicitly added
   voice.active = true;
   voice.sample_time = 0.0f;
+  voice.name = name;
 
   // Assign only what was provided, else NULL
   voice.osc = osc;
@@ -143,4 +146,55 @@ cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release) {
   env.level = 0.0f;
   env.state = 0; // idle
   return env;
+}
+
+cyn_voice *cyn_get_voice(char *name) {
+  for (int i = 0; i < MAX_VOICES; i++) {
+    if (gAM.voices[i].active && strcmp(gAM.voices[i].name, name) == 0) {
+      return &gAM.voices[i];
+    }
+  }
+  fprintf(stderr, "Error: Voice '%s' not found\n", name);
+  CyntherRunning = false; // stop if voice not found
+  return NULL;
+}
+
+void cyn_set_adsr_attack(char *name, float value) {
+  cyn_voice *voice = cyn_get_voice(name);
+  if (voice->env == NULL) {
+    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set attack\n",
+            name);
+    CyntherRunning = false; // stop if no envelope
+  }
+  atomic_store(&voice->env->attack, value);
+}
+
+void cyn_set_adsr_decay(char *name, float value) {
+  cyn_voice *voice = cyn_get_voice(name);
+  if (voice->env == NULL) {
+    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set decay\n",
+            name);
+    CyntherRunning = false; // stop if no envelope
+  }
+  atomic_store(&voice->env->decay, value);
+}
+
+void cyn_set_adsr_sustain(char *name, float value) {
+  cyn_voice *voice = cyn_get_voice(name);
+  if (voice->env == NULL) {
+    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set sustain\n",
+            name);
+    CyntherRunning = false; // stop if no envelope
+  }
+  atomic_store(&voice->env->sustain, value);
+}
+
+void cyn_set_adsr_release(char *name, float value) {
+  cyn_voice *voice = cyn_get_voice(name);
+  if (voice->env == NULL) {
+    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set release\n",
+            name);
+    CyntherRunning = false; // stop if no envelope
+  }
+  atomic_store(&voice->env->release, value);
 }
