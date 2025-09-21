@@ -95653,6 +95653,7 @@ SOFTWARE.
 /* === cynther API === */
 #pragma once
 
+// Standard library headers
 #include <assert.h>
 #include <math.h>
 #include <stdatomic.h>
@@ -95661,6 +95662,10 @@ SOFTWARE.
 #include <stdlib.h>
 #include <string.h>
 
+// External libraries
+// -------------------------
+// Macros / Constants
+// -------------------------
 #define DEVICE_FORMAT ma_format_f32
 #define DEVICE_CHANNELS 2
 #define DEVICE_SAMPLE_RATE 48000
@@ -95668,46 +95673,88 @@ SOFTWARE.
 #define NUM_NOTES 127
 #define MAX_EVENTS 64
 
-typedef enum { SINE, SQUARE, SAW } cyn_osc_type;
-typedef enum { LOWPASS, HIGHPASS } cyn_filter_type;
+// -------------------------
+// Enums
+// -------------------------
+typedef enum { CYN_SINE, CYN_SQUARE, CYN_SAW } cyn_osc_type;
+typedef enum { CYN_LOWPASS, CYN_HIGHPASS } cyn_filter_type;
+typedef enum { CYN_ADSR, CYN_LFO, CYN_FILTER, CYN_DELAY } cyn_effect_type;
+typedef enum {
+  CYN_ADSR_ATTACK,
+  CYN_ADSR_DECAY,
+  CYN_ADSR_SUSTAIN,
+  CYN_ADSR_RELEASE,
+  CYN_ADSR_IDLE
+} cyn_adsr_state;
 
+// -------------------------
+// Structs
+// -------------------------
+
+// Oscillator
 typedef struct {
-  _Atomic float freq;
+  _Atomic float base_freq;
+  _Atomic float read_freq;
   _Atomic float amp;
   float phase; // not atomic, only used inside callback
   float level;
   cyn_osc_type type;
 } cyn_osc;
 
+// Pattern
 typedef struct {
   float *freqs; // array of note frequencies
   int count;    // number of notes
   int current;  // current note index
 } cyn_pattern;
 
+// ADSR envelope
 typedef struct {
   _Atomic float attack, decay, sustain, release;
   _Atomic float level;
   int state;
 } cyn_adsr;
 
-typedef struct {
-  cyn_osc *osc;
-  cyn_osc *lfo;
-  cyn_pattern *pattern;
-  cyn_adsr *env;
-  float sample_time;
-  float max_sample_time;
-  bool active;
-  char *name;
-} cyn_voice;
-
+// Filter
 typedef struct {
   float a0, a1, a2, b1, b2;
   float z1, z2;
   cyn_filter_type type;
 } cyn_filter;
 
+typedef struct {
+  float freq;
+  float amp;
+  float phase;
+
+  _Atomic float *base;
+  _Atomic float *target;
+} cyn_lfo;
+
+// Effects and Effect Chain
+struct cyn_effect;
+
+typedef float (*cyn_effect_callback)(struct cyn_effect *effect, float input);
+
+typedef struct cyn_effect {
+  cyn_effect_type type;
+  cyn_effect_callback process;
+  void *data;
+  struct cyn_effect *next;
+} cyn_effect;
+
+// Voice
+typedef struct {
+  cyn_osc *osc;
+  cyn_pattern *pattern;
+  cyn_effect *effects;
+  float sample_time;
+  float max_sample_time;
+  bool active;
+  char *name;
+} cyn_voice;
+
+// Audio manager
 typedef struct {
   ma_device_config deviceConfig;
   ma_device device;
@@ -95718,31 +95765,45 @@ typedef struct {
   bool audioInitialized;
 } cyn_audio_manager;
 
+// -------------------------
 // Audio API
+// -------------------------
 void audio_init(cyn_voice *voices);
 void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
                          ma_uint32 frameCount);
 void audio_exit();
 
+// -------------------------
 // DSP API
+// -------------------------
 float dsp_sine(float phase);
 float dsp_square(float phase);
 float dsp_saw(float phase);
 
 void dsp_osc_callback(cyn_osc *osc, float phase);
-void dsp_adsr_callback(cyn_adsr *env);
-
 float _dsp_filter_process(cyn_filter *fl, float in);
-
 float dsp_mix(float *inputs, int count);
 
+// -------------------------
 // Pattern API
-
+// -------------------------
 int pattern_note_to_midi(const char *name);
 float pattern_midi_to_freq(int midi);
 void pattern_create_midi_freqs(float midi_freqs[NUM_NOTES]);
 
+// -------------------------
 // Public Cynther API
+// -------------------------
+void effect_adsr_on(cyn_adsr *v);
+void effect_adsr_off(cyn_adsr *v);
+
+float effect_adsr_callback(cyn_effect *effect, float input);
+float effect_lfo_callback(cyn_effect *effect, float input);
+float effect_chain_callback(cyn_effect *chain, float input);
+
+// -------------------------
+// Public Cynther API
+// -------------------------
 float cyn_time();
 cyn_voice *cyn_init_voices();
 void cyn_init(cyn_voice *voices);
@@ -95752,20 +95813,23 @@ void cyn_exit();
 void cyn_add_voice(cyn_voice voice);
 cyn_voice *cyn_get_voice(char *name);
 
+cyn_effect *cyn_new_effect(cyn_effect_type type, void *data);
+void cyn_add_effect(cyn_voice *voice, cyn_effect *effect);
+
+// ADSR setters
 void cyn_set_adsr_attack(char *name, float value);
 void cyn_set_adsr_decay(char *name, float value);
 void cyn_set_adsr_sustain(char *name, float value);
 void cyn_set_adsr_release(char *name, float value);
 
+// Constructors
 cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type);
-cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat,
-                        cyn_osc *lfo, cyn_adsr *env);
-
+cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat);
 cyn_pattern *cyn_new_pattern(int count, ...);
 void cyn_free_pattern(cyn_pattern *pat);
-
 cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release);
-
+cyn_lfo *cyn_new_lfo(float freq, float amp, _Atomic float *base,
+                     _Atomic float *target);
 void _cyn_new_filter(cyn_filter_type type, float cutoff, float Q, float sr);
 
 
@@ -95819,59 +95883,47 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
   float inputs[gAM.activeVoices];
 
   for (ma_uint32 i = 0; i < frameCount; i++) {
-    float inputs[gAM.activeVoices];
-
     for (int v = 0; v < gAM.activeVoices; v++) {
-      cyn_osc *osc = voices[v].osc;
-      cyn_osc *lfo = voices[v].lfo;
-      cyn_pattern *pat = voices[v].pattern;
-      cyn_adsr *env = voices[v].env;
-
-      // Only handle ADSR if env exists
-      if (env) {
-        float release_time = env->release * DEVICE_SAMPLE_RATE;
-        if (voices[v].sample_time >= voices[v].max_sample_time - release_time &&
-            env->state == 2) { // sustain
-          env->state = 3;      // release
-        }
-      }
+      cyn_voice *voice = &voices[v];
+      cyn_osc *osc = voice->osc;
+      cyn_pattern *pat = voice->pattern;
 
       // handle next note in pattern
-      if (voices[v].sample_time >= voices[v].max_sample_time) {
+      if (voice->sample_time >= voice->max_sample_time) {
+        // Advance to next note
         pat->current = (pat->current + 1) % pat->count;
-        osc->freq = pat->freqs[pat->current];
-        voices[v].sample_time = 0.0f;
+        osc->base_freq = pat->freqs[pat->current];
+        osc->read_freq = pat->freqs[pat->current];
+        voice->sample_time = 0;
 
-        if (env) {
-          env->state = 0; // restart envelope
-          env->level = 0.0f;
+        // Trigger new note on
+        for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+          if (fx->type == CYN_ADSR) {
+            effect_adsr_on((cyn_adsr *)fx->data);
+          }
+        }
+      } else if (voice->sample_time >=
+                 voice->max_sample_time - (DEVICE_SAMPLE_RATE * 0.01f)) {
+        // Trigger release slightly before the note ends
+        for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+          if (fx->type == CYN_ADSR) {
+            effect_adsr_off((cyn_adsr *)fx->data);
+          }
         }
       }
 
-      voices[v].sample_time++;
+      voice->sample_time++;
 
       dsp_osc_callback(osc, osc->phase);
-      float freq = osc->freq;
-
-      if (lfo) {
-        dsp_osc_callback(lfo, lfo->phase);
-        freq += lfo->level * lfo->amp;
-        lfo->phase += lfo->freq / sr;
-        if (lfo->phase >= 1.0f)
-          lfo->phase -= 1.0f;
-      }
-
-      if (env) {
-        dsp_adsr_callback(env);
-        inputs[v] = osc->amp * osc->level * env->level;
-      } else {
-        // Raw oscillator with no envelope
-        inputs[v] = osc->amp * osc->level;
-      }
+      float freq = osc->read_freq;
 
       osc->phase += freq / sr;
       if (osc->phase >= 1.0f)
         osc->phase -= 1.0f;
+
+      // Process effects and store result
+      float processed = effect_chain_callback(voice->effects, osc->level);
+      inputs[v] = osc->amp * processed;
     }
 
     float sample = dsp_mix(inputs, gAM.activeVoices);
@@ -95909,74 +95961,18 @@ float dsp_mix(float *inputs, int count) {
 
 void dsp_osc_callback(cyn_osc *osc, float phase) {
   switch (osc->type) {
-  case SINE:
+  case CYN_SINE:
     osc->level = dsp_sine(phase);
     break;
-  case SQUARE:
+  case CYN_SQUARE:
     osc->level = dsp_square(phase);
     break;
-  case SAW:
+  case CYN_SAW:
     osc->level = dsp_saw(phase);
     break;
   default:
     osc->level = 0.0f;
   }
-}
-
-void dsp_adsr_callback(cyn_adsr *env) {
-  switch (env->state) {
-  case 0: // Attack
-    if (atomic_load(&env->attack) <= 0.0f) {
-      atomic_store(&env->level, 1.0f);
-      env->state = 1; // move to decay immediately
-    } else {
-      float attack_rate =
-          1.0f / (atomic_load(&env->attack) * DEVICE_SAMPLE_RATE);
-      atomic_store(&env->level, atomic_load(&env->level) + attack_rate);
-      if (atomic_load(&env->level) >= 1.0f) {
-        atomic_store(&env->level, 1.0f);
-        env->state = 1;
-      }
-    }
-    break;
-
-  case 1: // Decay
-    if (atomic_load(&env->decay) <= 0.0f) {
-      atomic_store(&env->level, atomic_load(&env->sustain));
-      env->state = 2; // Move to Sustain immediately
-    } else {
-      float decay_rate = (1.0f - atomic_load(&env->sustain)) /
-                         (atomic_load(&env->decay) * DEVICE_SAMPLE_RATE);
-      atomic_store(&env->level, atomic_load(&env->level) - decay_rate);
-      if (atomic_load(&env->level) <= atomic_load(&env->sustain)) {
-        atomic_store(&env->level, atomic_load(&env->sustain));
-        env->state = 2; // Move to Sustain
-      }
-    }
-    break;
-  case 2: // Sustain
-    // Hold sustain level
-    break;
-  case 3: // Release
-    if (atomic_load(&env->release) <= 0.0f) {
-      atomic_store(&env->level, 0.0f);
-      env->state = 4;
-    } else {
-      float release_rate = atomic_load(&env->level) /
-                           (atomic_load(&env->release) * DEVICE_SAMPLE_RATE);
-      atomic_store(&env->level, atomic_load(&env->level) - release_rate);
-      if (atomic_load(&env->level) <= 0.0f) {
-        atomic_store(&env->level, 0.0f);
-        env->state = 4;
-      }
-    }
-    break;
-  case 4: // Inactive
-    atomic_store(&env->level, 0.0f);
-    break;
-  default:
-    break;
-  };
 }
 
 #ifndef CYNTHER_IMPLEMENTATION
@@ -96047,8 +96043,96 @@ void pattern_create_midi_freqs(float *midi_freqs) {
 
 #ifndef CYNTHER_IMPLEMENTATION
 #include "../include/cynther/cynther.h"
+#endif
+
+float effect_adsr_callback(cyn_effect *effect, float input) {
+  cyn_adsr *env = (cyn_adsr *)effect->data;
+
+  // advance ADSR state
+  switch (env->state) {
+  case CYN_ADSR_ATTACK: {
+    env->level += 1.0f / (env->attack * DEVICE_SAMPLE_RATE);
+    if (env->level >= 1.0f) {
+      env->level = 1.0f;
+      env->state = CYN_ADSR_DECAY;
+    }
+  } break;
+
+  case CYN_ADSR_DECAY: {
+    float decayStep = (1.0f - env->sustain) / (env->decay * DEVICE_SAMPLE_RATE);
+    env->level -= decayStep;
+    if (env->level <= env->sustain) {
+      env->level = env->sustain;
+      env->state = CYN_ADSR_SUSTAIN;
+    }
+  } break;
+
+  case CYN_ADSR_SUSTAIN:
+    // hold sustain level until note off
+    break;
+
+  case CYN_ADSR_RELEASE: {
+    float releaseStep = env->sustain / (env->release * DEVICE_SAMPLE_RATE);
+    env->level -= releaseStep;
+    if (env->level <= 0.0f) {
+      env->level = 0.0f;
+      env->state = CYN_ADSR_IDLE;
+    }
+  } break;
+
+  case CYN_ADSR_IDLE:
+  default:
+    env->level = 0.0f;
+    break;
+  }
+
+  // apply envelope to input
+  return input * env->level;
+}
+
+float effect_lfo_callback(cyn_effect *effect, float input) {
+  cyn_lfo *lfo = (cyn_lfo *)effect->data;
+
+  // generate LFO value (sine wave in range [-1, 1])
+  float lfo_value = lfo->amp * sinf(2.0f * M_PI * lfo->phase);
+
+  // advance phase
+  lfo->phase += lfo->freq / DEVICE_SAMPLE_RATE;
+  if (lfo->phase >= 1.0f)
+    lfo->phase -= 1.0f;
+
+  atomic_store(lfo->target, atomic_load(lfo->base) + lfo_value);
+  return input;
+}
+
+void effect_adsr_on(cyn_adsr *env) {
+  env->state = CYN_ADSR_ATTACK;
+  env->level = 0.0f;
+}
+
+void effect_adsr_off(cyn_adsr *env) {
+  if (env->state != CYN_ADSR_IDLE) {
+    env->state = CYN_ADSR_RELEASE;
+  }
+}
+
+float effect_chain_callback(cyn_effect *chain, float input) {
+  cyn_effect *e = chain;
+  float sample = input;
+
+  while (e) {
+    sample = e->process(e, sample);
+    e = e->next;
+  }
+
+  return sample;
+}
+
+#ifndef CYNTHER_IMPLEMENTATION
+#include "../include/cynther/cynther.h"
 #include "audio.c"
 #include "dsp.c"
+#include "effect.c"
 #include "pattern.c"
 #include "stdio.h"
 #endif
@@ -96063,9 +96147,8 @@ cyn_voice *cyn_init_voices() {
   for (int i = 0; i < MAX_VOICES; i++) {
     voices[i].active = 0;
     voices[i].osc = NULL;
-    voices[i].lfo = NULL;
-    voices[i].env = NULL;
     voices[i].pattern = NULL;
+    voices[i].effects = NULL;
   }
   return voices;
 }
@@ -96084,7 +96167,8 @@ void cyn_add_voice(cyn_voice voice) {
 
   float sample_time = 0;
   float max_sample_time = DEVICE_SAMPLE_RATE / (float)voice.pattern->count;
-  voice.osc->freq = voice.pattern->freqs[0]; // start with the first note
+  voice.osc->base_freq = voice.pattern->freqs[0]; // start with the first note
+  voice.osc->read_freq = voice.pattern->freqs[0]; // start with the first note
 
   // Find the first inactive voice slot
   for (int i = 0; i < MAX_VOICES; i++) {
@@ -96103,7 +96187,8 @@ void cyn_begin() {
 
 cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type) {
   cyn_osc osc;
-  osc.freq = freq;
+  osc.base_freq = freq;
+  osc.read_freq = freq;
   osc.amp = amp;
   osc.phase = phase;
   osc.level = 0.0f;
@@ -96111,8 +96196,7 @@ cyn_osc cyn_new_osc(float freq, float amp, float phase, cyn_osc_type type) {
   return osc;
 }
 
-cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat,
-                        cyn_osc *lfo, cyn_adsr *env) {
+cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat) {
   cyn_voice voice;
   if (!osc) {
     fprintf(stderr, "Error: cyn_new_voice() called with NULL osc\n");
@@ -96132,8 +96216,8 @@ cyn_voice cyn_new_voice(char *name, cyn_osc *osc, cyn_pattern *pat,
   // Assign only what was provided, else NULL
   voice.osc = osc;
   voice.pattern = pat;
-  voice.lfo = lfo ? lfo : NULL;
-  voice.env = env ? env : NULL;
+
+  voice.effects = NULL;
 
   // Protect against NULL pattern
   voice.max_sample_time = DEVICE_SAMPLE_RATE / (float)pat->count;
@@ -96187,8 +96271,19 @@ cyn_adsr cyn_new_adsr(float attack, float decay, float sustain, float release) {
   env.sustain = sustain;
   env.release = release;
   env.level = 0.0f;
-  env.state = 0; // idle
+  env.state = CYN_ADSR_ATTACK; // idle
   return env;
+}
+
+cyn_lfo *cyn_new_lfo(float freq, float amp, _Atomic float *base,
+                     _Atomic float *target) {
+  cyn_lfo *lfo = malloc(sizeof(cyn_lfo));
+  lfo->freq = freq;
+  lfo->amp = amp;
+  lfo->phase = 0.0f;
+  lfo->base = base;
+  lfo->target = target;
+  return lfo;
 }
 
 cyn_voice *cyn_get_voice(char *name) {
@@ -96202,44 +96297,94 @@ cyn_voice *cyn_get_voice(char *name) {
   return NULL;
 }
 
+cyn_effect *cyn_new_effect(cyn_effect_type type, void *data) {
+  cyn_effect *effect = malloc(sizeof(cyn_effect));
+  if (!effect)
+    return NULL;
+
+  effect->type = type;
+  effect->data = data;
+  effect->next = NULL;
+
+  switch (type) {
+  case CYN_ADSR:
+    effect->process = effect_adsr_callback;
+    break;
+  case CYN_LFO:
+    effect->process = effect_lfo_callback;
+    break;
+  default:
+    free(effect);
+    return NULL; // unknown effect type
+  }
+
+  return effect;
+}
+
+void cyn_add_effect(cyn_voice *voice, cyn_effect *effect) {
+  if (!voice || !effect)
+    return;
+
+  if (voice->effects == NULL) {
+    voice->effects = effect;
+  } else {
+    cyn_effect *current = voice->effects;
+    while (current->next != NULL) {
+      current = current->next;
+    }
+    current->next = effect;
+  }
+}
+
 void cyn_set_adsr_attack(char *name, float value) {
   cyn_voice *voice = cyn_get_voice(name);
-  if (voice->env == NULL) {
-    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set attack\n",
-            name);
-    CYNTHER_RUNNING = false; // stop if no envelope
+  if (!voice)
+    return;
+
+  for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+    if (fx->type == CYN_ADSR) {
+      ((cyn_adsr *)fx->data)->attack = value;
+      return;
+    }
   }
-  atomic_store(&voice->env->attack, value);
 }
 
 void cyn_set_adsr_decay(char *name, float value) {
   cyn_voice *voice = cyn_get_voice(name);
-  if (voice->env == NULL) {
-    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set decay\n",
-            name);
-    CYNTHER_RUNNING = false; // stop if no envelope
-  }
-  atomic_store(&voice->env->decay, value);
-}
+  if (!voice)
+    return;
 
+  for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+    if (fx->type == CYN_ADSR) {
+      ((cyn_adsr *)fx->data)->decay = value;
+      return;
+    }
+  }
+}
 void cyn_set_adsr_sustain(char *name, float value) {
   cyn_voice *voice = cyn_get_voice(name);
-  if (voice->env == NULL) {
-    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set sustain\n",
-            name);
-    CYNTHER_RUNNING = false; // stop if no envelope
+  if (!voice)
+    return;
+
+  for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+    if (fx->type == CYN_ADSR) {
+      ((cyn_adsr *)fx->data)->sustain = value;
+      return;
+    }
   }
-  atomic_store(&voice->env->sustain, value);
 }
 
 void cyn_set_adsr_release(char *name, float value) {
   cyn_voice *voice = cyn_get_voice(name);
-  if (voice->env == NULL) {
-    fprintf(stderr, "Error: Voice '%s' has no ADSR envelope to set release\n",
-            name);
-    CYNTHER_RUNNING = false; // stop if no envelope
+  if (!voice)
+    return;
+
+  for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+    if (fx->type == CYN_ADSR) {
+      ((cyn_adsr *)fx->data)->release = value;
+      return;
+    }
   }
-  atomic_store(&voice->env->release, value);
 }
 
 void cyn_exit() {

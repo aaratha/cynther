@@ -17,72 +17,16 @@ float dsp_mix(float *inputs, int count) {
 
 void dsp_osc_callback(cyn_osc *osc, float phase) {
   switch (osc->type) {
-  case SINE:
+  case CYN_SINE:
     osc->level = dsp_sine(phase);
     break;
-  case SQUARE:
+  case CYN_SQUARE:
     osc->level = dsp_square(phase);
     break;
-  case SAW:
+  case CYN_SAW:
     osc->level = dsp_saw(phase);
     break;
   default:
     osc->level = 0.0f;
   }
-}
-
-void dsp_adsr_callback(cyn_adsr *env) {
-  switch (env->state) {
-  case 0: // Attack
-    if (atomic_load(&env->attack) <= 0.0f) {
-      atomic_store(&env->level, 1.0f);
-      env->state = 1; // move to decay immediately
-    } else {
-      float attack_rate =
-          1.0f / (atomic_load(&env->attack) * DEVICE_SAMPLE_RATE);
-      atomic_store(&env->level, atomic_load(&env->level) + attack_rate);
-      if (atomic_load(&env->level) >= 1.0f) {
-        atomic_store(&env->level, 1.0f);
-        env->state = 1;
-      }
-    }
-    break;
-
-  case 1: // Decay
-    if (atomic_load(&env->decay) <= 0.0f) {
-      atomic_store(&env->level, atomic_load(&env->sustain));
-      env->state = 2; // Move to Sustain immediately
-    } else {
-      float decay_rate = (1.0f - atomic_load(&env->sustain)) /
-                         (atomic_load(&env->decay) * DEVICE_SAMPLE_RATE);
-      atomic_store(&env->level, atomic_load(&env->level) - decay_rate);
-      if (atomic_load(&env->level) <= atomic_load(&env->sustain)) {
-        atomic_store(&env->level, atomic_load(&env->sustain));
-        env->state = 2; // Move to Sustain
-      }
-    }
-    break;
-  case 2: // Sustain
-    // Hold sustain level
-    break;
-  case 3: // Release
-    if (atomic_load(&env->release) <= 0.0f) {
-      atomic_store(&env->level, 0.0f);
-      env->state = 4;
-    } else {
-      float release_rate = atomic_load(&env->level) /
-                           (atomic_load(&env->release) * DEVICE_SAMPLE_RATE);
-      atomic_store(&env->level, atomic_load(&env->level) - release_rate);
-      if (atomic_load(&env->level) <= 0.0f) {
-        atomic_store(&env->level, 0.0f);
-        env->state = 4;
-      }
-    }
-    break;
-  case 4: // Inactive
-    atomic_store(&env->level, 0.0f);
-    break;
-  default:
-    break;
-  };
 }

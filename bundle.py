@@ -21,6 +21,7 @@ sources = [
     (ROOT / "src/audio.c").read_text().strip(),
     (ROOT / "src/dsp.c").read_text().strip(),
     (ROOT / "src/pattern.c").read_text().strip(),
+    (ROOT / "src/effect.c").read_text().strip(),
     (ROOT / "src/cynther.c").read_text().strip(),
 ]
 impl = "\n\n".join(sources)

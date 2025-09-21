@@ -46,59 +46,47 @@ void audio_data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
   float inputs[gAM.activeVoices];
 
   for (ma_uint32 i = 0; i < frameCount; i++) {
-    float inputs[gAM.activeVoices];
-
     for (int v = 0; v < gAM.activeVoices; v++) {
-      cyn_osc *osc = voices[v].osc;
-      cyn_osc *lfo = voices[v].lfo;
-      cyn_pattern *pat = voices[v].pattern;
-      cyn_adsr *env = voices[v].env;
-
-      // Only handle ADSR if env exists
-      if (env) {
-        float release_time = env->release * DEVICE_SAMPLE_RATE;
-        if (voices[v].sample_time >= voices[v].max_sample_time - release_time &&
-            env->state == 2) { // sustain
-          env->state = 3;      // release
-        }
-      }
+      cyn_voice *voice = &voices[v];
+      cyn_osc *osc = voice->osc;
+      cyn_pattern *pat = voice->pattern;
 
       // handle next note in pattern
-      if (voices[v].sample_time >= voices[v].max_sample_time) {
+      if (voice->sample_time >= voice->max_sample_time) {
+        // Advance to next note
         pat->current = (pat->current + 1) % pat->count;
-        osc->freq = pat->freqs[pat->current];
-        voices[v].sample_time = 0.0f;
+        osc->base_freq = pat->freqs[pat->current];
+        osc->read_freq = pat->freqs[pat->current];
+        voice->sample_time = 0;
 
-        if (env) {
-          env->state = 0; // restart envelope
-          env->level = 0.0f;
+        // Trigger new note on
+        for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+          if (fx->type == CYN_ADSR) {
+            effect_adsr_on((cyn_adsr *)fx->data);
+          }
+        }
+      } else if (voice->sample_time >=
+                 voice->max_sample_time - (DEVICE_SAMPLE_RATE * 0.01f)) {
+        // Trigger release slightly before the note ends
+        for (cyn_effect *fx = voice->effects; fx; fx = fx->next) {
+          if (fx->type == CYN_ADSR) {
+            effect_adsr_off((cyn_adsr *)fx->data);
+          }
         }
       }
 
-      voices[v].sample_time++;
+      voice->sample_time++;
 
       dsp_osc_callback(osc, osc->phase);
-      float freq = osc->freq;
-
-      if (lfo) {
-        dsp_osc_callback(lfo, lfo->phase);
-        freq += lfo->level * lfo->amp;
-        lfo->phase += lfo->freq / sr;
-        if (lfo->phase >= 1.0f)
-          lfo->phase -= 1.0f;
-      }
-
-      if (env) {
-        dsp_adsr_callback(env);
-        inputs[v] = osc->amp * osc->level * env->level;
-      } else {
-        // Raw oscillator with no envelope
-        inputs[v] = osc->amp * osc->level;
-      }
+      float freq = osc->read_freq;
 
       osc->phase += freq / sr;
       if (osc->phase >= 1.0f)
         osc->phase -= 1.0f;
+
+      // Process effects and store result
+      float processed = effect_chain_callback(voice->effects, osc->level);
+      inputs[v] = osc->amp * processed;
     }
 
     float sample = dsp_mix(inputs, gAM.activeVoices);
