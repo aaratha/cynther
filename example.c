@@ -4,6 +4,8 @@
 int main(int argc, char **argv) {
   // Initializes voice container
   cyn_voice *voices = cyn_init_voices();
+
+  // Initializes audio system with voice container
   cyn_init(voices);
 
   // Creates first voice with oscillator and pattern
@@ -19,7 +21,7 @@ int main(int argc, char **argv) {
   // Adds first voice
   cyn_add_voice(wow);
 
-  // Creates second voice with more complexe pattern
+  // Creates second voice with more complex pattern
   cyn_osc osc2 = cyn_new_osc(440.0f, 0.1f, 0.0f, CYN_SAW);
   cyn_pattern *pattern2 = cyn_new_pattern(4, "C3", "Bf3", "A3", "G2");
   cyn_voice arp = cyn_new_voice("arp", &osc2, pattern2);
