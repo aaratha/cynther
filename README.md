@@ -2,7 +2,7 @@
 
 A single header C library for scripting and interacting with synthesizers.
 
-- Uses miniaudio.h for audio output.
+- Uses [miniaudio.h](https://github.com/mackron/miniaudio) for audio output.
 
 ## Roadmap
 
@@ -18,9 +18,11 @@ A single header C library for scripting and interacting with synthesizers.
 
 ## Getting Started
 
-Simply copy cynther.h into your project and include it in one of your C files with the `CYNTHER_IMPLEMENTATION` macro defined.
+Simply copy [cynther.h](cynther.h) into your project and include it in one of your C files with the `CYNTHER_IMPLEMENTATION` macro defined.
 
 ## Example Usage
+
+from [example.c](example.c):
 
 ```C
 #define CYNTHER_IMPLEMENTATION
@@ -73,3 +75,11 @@ int main(int argc, char **argv) {
   (void)argv;
 }
 ```
+
+## Contributing
+
+This project is under heavy development. Contributions are welcome! Please fork the repository and submit a pull request with your changes.
+
+## License
+
+cynther.h is released under the MIT License. See license information at the top of [cynther.h](cynther.h) for details.
