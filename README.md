@@ -18,7 +18,7 @@ A single header C library for scripting and interacting with synthesizers.
 
 ## Example Usage
 
-```
+```C
 #define CYNTHER_IMPLEMENTATION
 #include "cynther.h"
 
@@ -68,8 +68,4 @@ int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
 }
-```
-
-```
-
 ```
