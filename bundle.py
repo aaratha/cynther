@@ -4,6 +4,14 @@ import re
 ROOT = Path(__file__).parent
 
 # ----------------------------
+# 0. Read LICENSE.txt
+# ----------------------------
+license_text = (ROOT / "LICENSE.txt").read_text().strip()
+license_block = (
+    "/*\n" + "\n".join("    " + line for line in license_text.splitlines()) + "\n*/\n\n"
+)
+
+# ----------------------------
 # 1. Read and clean public API
 # ----------------------------
 api = (ROOT / "include/cynther/cynther.h").read_text()
@@ -29,7 +37,7 @@ impl = "\n\n".join(sources)
 # ----------------------------
 # 4. Generate single-header
 # ----------------------------
-out = f"""#pragma once
+out = f"""{license_block}#pragma once
 #define MINIAUDIO_IMPLEMENTATION
 {miniaudio}
 

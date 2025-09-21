@@ -82,4 +82,4 @@ This project is under heavy development. Contributions are welcome! Please fork 
 
 ## License
 
-cynther.h is released under the MIT License. See license information at the top of [cynther.h](cynther.h) for details.
+cynther.h is released under the [MIT License](https://en.wikipedia.org/wiki/MIT_License). See license information in [LICENSE.txt](LICENSE.txt) for details.
