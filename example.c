@@ -1,39 +1,48 @@
 #define CYNTHER_IMPLEMENTATION
 #include "cynther.h"
-#include <unistd.h>
 
 int main(int argc, char **argv) {
+  // Initializes voice container
   cyn_voice *voices = cyn_init_voices();
   cyn_init(voices);
 
-  // Test with LFO tremolo effect
+  // Creates first voice with oscillator and pattern
   cyn_osc osc1 = cyn_new_osc(220.0f, 0.2f, 0.0f, CYN_SINE);
   cyn_pattern *pattern1 = cyn_new_pattern(1, "A3");
   cyn_voice wow = cyn_new_voice("wow", &osc1, pattern1);
-  cyn_lfo *lfo1 = cyn_new_lfo(
-      1.0f, 100.0f, &osc1.base_freq,
-      &osc1.read_freq); // NULL target since we're using it as tremolo
+
+  // Creates and adds lfo control effect targeting oscillator frequency
+  cyn_lfo *lfo1 = cyn_new_lfo(1.0f, 100.0f, &osc1.base_freq, &osc1.read_freq);
   cyn_effect *lfo_effect = cyn_new_effect(CYN_LFO, lfo1);
   cyn_add_effect(&wow, lfo_effect);
 
+  // Adds first voice
   cyn_add_voice(wow);
 
+  // Creates second voice with more complexe pattern
   cyn_osc osc2 = cyn_new_osc(440.0f, 0.1f, 0.0f, CYN_SAW);
   cyn_pattern *pattern2 = cyn_new_pattern(4, "C3", "Bf3", "A3", "G2");
+  cyn_voice arp = cyn_new_voice("arp", &osc2, pattern2);
+
+  // Creates and adds ADSR envelope effect
   cyn_adsr env2 = cyn_new_adsr(0.01f, 0.2f, 0.5f, 0.2f);
   cyn_effect *adsr_effect = cyn_new_effect(CYN_ADSR, &env2);
-  cyn_voice v2 = cyn_new_voice("v2", &osc2, pattern2);
-  cyn_add_effect(&v2, adsr_effect);
-  cyn_add_voice(v2);
+  cyn_add_effect(&arp, adsr_effect);
 
+  // Adds second voice
+  cyn_add_voice(arp);
+
+  // Begins audio thread
   cyn_begin();
 
-  // Modify ADSR parameters in real-time
+  // Defines user thread behavior
   while (CYNTHER_RUNNING) {
+    // Modulate the ADSR sustain level of the arp voice with a slow LFO
     float adsr_lfo = 0.5 * sinf(4.0f * M_PI * 0.1f * cyn_time()) + 0.5f;
-    cyn_set_adsr_sustain("v2", adsr_lfo);
+    cyn_set_adsr_sustain("arp", adsr_lfo);
   }
 
+  // Exits program
   cyn_exit();
   (void)argc;
   (void)argv;
