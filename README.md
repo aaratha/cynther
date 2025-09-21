@@ -1,4 +1,4 @@
-# Cynther
+# cynther.h
 
 A single header C library for scripting and interacting with synthesizers.
 
