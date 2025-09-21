@@ -16,6 +16,10 @@ A single header C library for scripting and interacting with synthesizers.
 - [ ] CLI for modifying parameters real-time
 - [ ] Robust sound library for quick CLI scripting
 
+## Getting Started
+
+Simply copy cynther.h into your project and include it in one of your C files with the `CYNTHER_IMPLEMENTATION` macro defined.
+
 ## Example Usage
 
 ```C
